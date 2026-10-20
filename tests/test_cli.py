@@ -56,6 +56,21 @@ def test_cli_run_offline(
         )
     script = (exp / "evaluate.sh").read_text()
     assert script.count("swebench.harness.run_evaluation") == 2
+    assert "cd evaluation" in script
+    manifest = json.loads((exp / "experiment_manifest.json").read_text())
+    assert manifest["dataset_revision"] and manifest["instance_ids"] == ["toy__calc-1"]
+    assert manifest["codetrace_git_commit"] is None or len(manifest["codetrace_git_commit"]) == 40
+    # The same commit is in every run manifest (with "+dirty" when the tree had changes).
+    for t in traces:
+        run_commit = read_trace(t)[0].payload["manifest"]["codetrace_git_commit"]
+        if manifest["codetrace_git_commit"] is None:
+            assert run_commit is None
+        else:
+            assert run_commit.startswith(manifest["codetrace_git_commit"])
+            assert run_commit.endswith("+dirty") == bool(manifest["codetrace_git_dirty"])
+    # An experiment directory is never reused.
+    with pytest.raises(SystemExit, match="already holds"):
+        main(["run", "--config", str(cfg), "--runs-dir", str(runs)])
     eval_ds = exp / "evaluator_dataset.jsonl"
     assert str(eval_ds.resolve()) in script
     assert [json.loads(x)["instance_id"] for x in eval_ds.read_text().splitlines()] == [
@@ -70,7 +85,79 @@ def test_cli_refuses_paid_without_flag(
     upstream_repo: tuple[Path, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import codetrace.cli as cli
+
     monkeypatch.setenv("CODETRACE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(cli, "git_state", lambda: {"commit": None, "dirty": None})
     cfg = _write_cfg(tmp_path, dataset_jsonl, upstream_repo[0], provider="anthropic")
     with pytest.raises(SystemExit, match="--allow-paid"):
         main(["run", "--config", str(cfg), "--runs-dir", str(tmp_path / "runs")])
+
+
+@pytest.mark.parametrize(
+    ("state", "extra", "refused"),
+    [
+        ({"commit": "a" * 40, "dirty": True}, [], True),
+        ({"commit": None, "dirty": None}, [], True),
+        ({"commit": "a" * 40, "dirty": True}, ["--allow-dirty"], False),
+    ],
+)
+def test_paid_run_requires_clean_commit(
+    tmp_path: Path,
+    dataset_jsonl: Path,
+    upstream_repo: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    state: dict[str, object],
+    extra: list[str],
+    refused: bool,
+) -> None:
+    import codetrace.cli as cli
+
+    monkeypatch.setenv("CODETRACE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(cli, "git_state", lambda: state)
+    cfg = _write_cfg(tmp_path, dataset_jsonl, upstream_repo[0], provider="anthropic")
+    argv = [
+        "run",
+        "--config",
+        str(cfg),
+        "--runs-dir",
+        str(tmp_path / "runs"),
+        "--allow-paid",
+        *extra,
+    ]
+    if refused:
+        with pytest.raises(SystemExit, match="dirty"):
+            main(argv)
+    else:
+        # Passes the git guard; stops at model construction (no API key -> no call is made).
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setattr(
+            "codetrace.models.anthropic_client.AnthropicModel.__init__",
+            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("model constructed")),
+        )
+        with pytest.raises(RuntimeError, match="model constructed"):
+            main(argv)
+
+
+def test_collect_eval_cli(
+    tmp_path: Path,
+    dataset_jsonl: Path,
+    upstream_repo: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CODETRACE_DATA_DIR", str(tmp_path / "data"))
+    cfg = _write_cfg(tmp_path, dataset_jsonl, upstream_repo[0])
+    runs = tmp_path / "runs"
+    assert main(["run", "--config", str(cfg), "--runs-dir", str(runs)]) == 0
+    exp = runs / "cli_test"
+    keys = ("submitted_ids", "completed_ids", "incomplete_ids", "empty_patch_ids", "resolved_ids",
+            "unresolved_ids", "error_ids", "infra_failure_ids", "ambiguous_failure_ids")  # fmt: skip
+    for seed in (0, 1):
+        run_id = f"cli_test__A_baseline__s{seed}"
+        summary = {"schema_version": 2, **{k: [] for k in keys}, "failure_reasons": {},
+                   "submitted_ids": ["toy__calc-1"], "empty_patch_ids": ["toy__calc-1"]}  # fmt: skip
+        (exp / "evaluation").mkdir(exist_ok=True)
+        (exp / "evaluation" / f"m.{run_id}.json").write_text(json.dumps(summary))
+    assert main(["collect-eval", "--experiment-dir", str(exp)]) == 0
+    rows = [json.loads(x) for x in (exp / "evaluation" / "results.jsonl").read_text().splitlines()]
+    assert [(r["seed"], r["category"]) for r in rows] == [(0, "empty_patch"), (1, "empty_patch")]

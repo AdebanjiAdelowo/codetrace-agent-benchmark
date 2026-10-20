@@ -19,11 +19,18 @@ from codetrace.dataset import (
     load_tasks,
     select_tasks,
 )
-from codetrace.evaluation import evaluator_command, shell_join, write_predictions
+from codetrace.env_info import environment_info, git_state
+from codetrace.evaluation import (
+    collect_evaluation,
+    evaluator_command,
+    shell_join,
+    write_predictions,
+)
 from codetrace.models.base import ModelClient
 from codetrace.models.scripted import HeuristicExplorer
 from codetrace.netfix import apply_from_env as apply_ipv4_workaround
-from codetrace.trace import export_json_schema, read_trace, validate_trace
+from codetrace.trace import export_json_schema, read_trace, utc_now, validate_trace
+from codetrace.validation import run_bundle, write_control_predictions
 from codetrace.workspace import create_workspace, ensure_mirror, repo_url
 
 PILOT_REPOS = (
@@ -83,6 +90,18 @@ def _make_model(cfg: ExperimentConfig, problem_statement: str, allow_paid: bool)
 
 def cmd_run(args: argparse.Namespace) -> int:
     cfg = load_config(Path(args.config))
+    paid = cfg.model.provider != "heuristic"
+    if paid and not args.allow_paid:
+        raise SystemExit(
+            "refusing to run a paid model without --allow-paid "
+            f"(provider={cfg.model.provider}, model={cfg.model.name})"
+        )
+    git = git_state()
+    if paid and (git["commit"] is None or git["dirty"]) and not args.allow_dirty:
+        raise SystemExit(
+            "refusing a paid run from an uncommitted or dirty working tree "
+            f"(commit={git['commit']}, dirty={git['dirty']}); commit first or pass --allow-dirty"
+        )
     dataset_file = _dataset_file(cfg.dataset_path, cfg.split)
     tasks = load_tasks(dataset_file)
     missing = [i for i in cfg.instance_ids if i not in tasks]
@@ -90,8 +109,24 @@ def cmd_run(args: argparse.Namespace) -> int:
         raise SystemExit(f"instance ids not in dataset: {missing}")
     root = data_dir()
     exp_dir = Path(args.runs_dir) / cfg.experiment_id
+    if (exp_dir / "experiment_manifest.json").exists():
+        raise SystemExit(f"{exp_dir} already holds an experiment; use a new experiment_id")
     exp_dir.mkdir(parents=True, exist_ok=True)
     (exp_dir / "config.resolved.json").write_text(cfg.model_dump_json(indent=2) + "\n")
+    experiment_manifest = {
+        "experiment_id": cfg.experiment_id,
+        "created_at": utc_now(),
+        "codetrace_git_commit": git["commit"],
+        "codetrace_git_dirty": git["dirty"],
+        "config_path": str(args.config),
+        "dataset": DATASET_NAME,
+        "dataset_revision": DATASET_REVISION,
+        "instance_ids": cfg.instance_ids,
+        "environment": environment_info(),
+    }
+    (exp_dir / "experiment_manifest.json").write_text(
+        json.dumps(experiment_manifest, indent=2) + "\n"
+    )
 
     results = []
     for agent_config in cfg.agent_configs:
@@ -146,7 +181,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     script = exp_dir / "evaluate.sh"
     script.write_text(
         "#!/usr/bin/env bash\n# Official SWE-bench evaluation (requires the `eval` extra, Docker,\n"
-        "# and disk per docs/RESOURCES.md). Status: PENDING until run.\nset -euo pipefail\n"
+        "# and disk per docs/RESOURCES.md). Status: PENDING until run.\n"
+        "# Harness logs and reports are written under evaluation/ next to this script;\n"
+        "# afterwards: codetrace collect-eval --experiment-dir <this dir>\n"
+        "set -euo pipefail\n"
+        'cd "$(dirname "$0")" && mkdir -p evaluation && cd evaluation\n'
         + "\n".join(commands)
         + "\n"
     )
@@ -161,6 +200,50 @@ def cmd_validate_trace(args: argparse.Namespace) -> int:
         print(f"{p}: {'OK' if not problems else '; '.join(problems)}")
         bad += bool(problems)
     return 1 if bad else 0
+
+
+def cmd_collect_eval(args: argparse.Namespace) -> int:
+    exp_dir = Path(args.experiment_dir)
+    cfg = ExperimentConfig.model_validate_json((exp_dir / "config.resolved.json").read_text())
+    eval_dir = exp_dir / "evaluation"
+    out_rows = []
+    for agent_config in cfg.agent_configs:
+        for seed in cfg.seeds:
+            run_id = f"{cfg.experiment_id}__{agent_config}__s{seed}"
+            for row in collect_evaluation(eval_dir, run_id, cfg.instance_ids):
+                out_rows.append(
+                    {"run_id": run_id, "agent_config": agent_config, "seed": seed, **row}
+                )
+    out = eval_dir / "results.jsonl"
+    out.write_text("".join(json.dumps(r) + "\n" for r in out_rows))
+    for r in out_rows:
+        print(f"{r['run_id']}  {r['instance_id']:<28} {r['category']}")
+    print(f"wrote {out}")
+    return 0
+
+
+def cmd_make_control(args: argparse.Namespace) -> int:
+    tasks = load_tasks(_dataset_file(Path(args.dataset) if args.dataset else None, "test"))
+    chosen = [tasks[i] for i in args.instance_ids]
+    root = data_dir()
+    n = write_control_predictions(
+        chosen,
+        root / "mirrors",
+        root / "control_workspaces" / utc_now().replace(":", ""),
+        Path(args.out),
+    )
+    print(f"wrote {n} control predictions to {args.out}")
+    return 0
+
+
+def cmd_validate_harness(args: argparse.Namespace) -> int:
+    dataset_file = _dataset_file(Path(args.dataset) if args.dataset else None, "test")
+    result = run_bundle(
+        Path(args.bundle), Path(args.out), dataset_file,
+        skip_docker=args.skip_docker, max_workers=args.max_workers,
+    )  # fmt: skip
+    print(json.dumps(result, indent=2))
+    return 0 if result["all_executed_passed"] else 1
 
 
 def cmd_export_schema(args: argparse.Namespace) -> int:
@@ -185,7 +268,28 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--config", required=True)
     r.add_argument("--runs-dir", default="runs")
     r.add_argument("--allow-paid", action="store_true", help="permit paid model API calls")
+    r.add_argument(
+        "--allow-dirty", action="store_true", help="permit a paid run from a dirty working tree"
+    )
     r.set_defaults(func=cmd_run)
+
+    c = sub.add_parser("collect-eval", help="parse official evaluator output for an experiment")
+    c.add_argument("--experiment-dir", required=True)
+    c.set_defaults(func=cmd_collect_eval)
+
+    m = sub.add_parser("make-control-predictions", help="negative-control patches (harness check)")
+    m.add_argument("--instance-ids", nargs="+", required=True)
+    m.add_argument("--out", required=True)
+    m.add_argument("--dataset")
+    m.set_defaults(func=cmd_make_control)
+
+    h = sub.add_parser("validate-harness", help="known-answer check of the official evaluator")
+    h.add_argument("--bundle", required=True)
+    h.add_argument("--out", required=True)
+    h.add_argument("--dataset")
+    h.add_argument("--skip-docker", action="store_true", help="run only empty-patch sets")
+    h.add_argument("--max-workers", type=int, default=1)
+    h.set_defaults(func=cmd_validate_harness)
 
     v = sub.add_parser("validate-trace", help="structural validation of trace files")
     v.add_argument("paths", nargs="+")

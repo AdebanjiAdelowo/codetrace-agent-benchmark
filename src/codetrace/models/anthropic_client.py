@@ -22,6 +22,7 @@ from codetrace.models.base import ModelInfo, ModelResponse
 from codetrace.trace import TokenUsage
 
 if TYPE_CHECKING:
+    import anthropic
     from anthropic.types import MessageParam, OutputConfigParam, ToolParam
 
 DEFAULT_MODEL = "claude-opus-5-5"
@@ -35,10 +36,14 @@ class AnthropicModel:
         effort: str = "high",
         timeout_s: float = 600.0,
         max_retries: int = 2,
+        client: anthropic.Anthropic | None = None,
     ) -> None:
         import anthropic
 
-        self._client = anthropic.Anthropic(timeout=timeout_s, max_retries=max_retries)
+        # `client` is injectable so tests can use a mock HTTP transport.
+        self._client = client or anthropic.Anthropic(timeout=timeout_s, max_retries=max_retries)
+        if client is not None:
+            max_retries = client.max_retries
         self.model = model
         self.max_tokens = max_tokens
         self.effort = effort

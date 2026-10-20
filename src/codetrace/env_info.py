@@ -41,19 +41,31 @@ def environment_info() -> dict[str, Any]:
     }
 
 
-def codetrace_git_commit() -> str | None:
-    """Commit of this repository (with '+dirty' if there are uncommitted changes)."""
+def git_state() -> dict[str, Any]:
+    """Commit of this repository and whether the working tree differs from it.
+
+    ``dirty`` counts modified, staged, and untracked (non-ignored) files. Returns
+    ``{"commit": None, "dirty": None}`` outside a git checkout or before any commit.
+    """
     root = Path(__file__).resolve().parents[2]
     head = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=False
-    )
-    if head.returncode != 0:
-        return None
-    dirty = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=no"],
+        ["git", "rev-parse", "--verify", "HEAD"],
         cwd=root,
         capture_output=True,
         text=True,
         check=False,
     )
-    return head.stdout.strip() + ("+dirty" if dirty.stdout.strip() else "")
+    if head.returncode != 0:
+        return {"commit": None, "dirty": None}
+    status = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=root, capture_output=True, text=True, check=False
+    )
+    return {"commit": head.stdout.strip(), "dirty": bool(status.stdout.strip())}
+
+
+def codetrace_git_commit() -> str | None:
+    """Commit SHA for manifests, suffixed with '+dirty' if the tree has changes."""
+    st = git_state()
+    if st["commit"] is None:
+        return None
+    return str(st["commit"]) + ("+dirty" if st["dirty"] else "")

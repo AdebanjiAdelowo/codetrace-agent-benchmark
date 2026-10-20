@@ -1,0 +1,3 @@
+{"instance_id": "pytest-dev__pytest-11143", "model_name_or_path": "codetrace__A_baseline__s0__heuristic-explorer-v1", "model_patch": ""}
+{"instance_id": "sympy__sympy-13480", "model_name_or_path": "codetrace__A_baseline__s0__heuristic-explorer-v1", "model_patch": ""}
+{"instance_id": "pylint-dev__pylint-7080", "model_name_or_path": "codetrace__A_baseline__s0__heuristic-explorer-v1", "model_patch": ""}

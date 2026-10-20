@@ -1,0 +1,35 @@
+{
+  "name": "harness_validation_v1",
+  "purpose": "Known-answer validation of the official SWE-bench evaluator and CodeTrace's report parsing. Not a research result.",
+  "dataset": "SWE-bench/SWE-bench_Lite",
+  "dataset_revision": "b0dde1093fe417d83b7184254edf8199c1f0dff5",
+  "split": "test",
+  "swebench_version": "5.0.2",
+  "instance_ids": [
+    "pytest-dev__pytest-11143",
+    "sympy__sympy-13480",
+    "pylint-dev__pylint-7080"
+  ],
+  "evaluator_dataset_sha256": "41ada449369f50e883df7cdd50ba33ba91b26cfe6e44f2fad28dd47616477b99",
+  "runs": [
+    {
+      "name": "smoke",
+      "predictions": "smoke_predictions.jsonl",
+      "predictions_sha256": "252560ba2dcb7ea921a2beb39bed7407adc98d6e631ec569d919c23e5f84af3b",
+      "source": "runs/smoke_heuristic_v2/predictions/A_baseline__s0.jsonl (copied, byte-identical)",
+      "expect": "empty_patch"
+    },
+    {
+      "name": "gold",
+      "predictions": "gold",
+      "expect": "resolved"
+    },
+    {
+      "name": "control",
+      "predictions": "control_predictions.jsonl",
+      "predictions_sha256": "4c1c996bd757a6bf04c7c3a3b78f137ec6176fa8082dd7af3f1a0bd6209af108",
+      "source": "codetrace make-control-predictions (one comment line appended to the reference-patch file)",
+      "expect": "unresolved_applied"
+    }
+  ]
+}

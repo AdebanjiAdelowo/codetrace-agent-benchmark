@@ -116,14 +116,26 @@ def test_parse_real_summary_artifact() -> None:
     assert s.category("other__x-1") == "not_submitted"
 
 
-def test_summary_rejects_inconsistent_partition() -> None:
+def test_summary_consistency_rules() -> None:
     data = json.loads((FIXTURES / "swebench_5.0.2_summary_empty_patches.json").read_text())
     with pytest.raises(ValueError, match="both"):
         parse_run_summary({**data, "resolved_ids": [SMOKE_IDS[0]]})
-    with pytest.raises(ValueError, match="partition"):
-        parse_run_summary({**data, "empty_patch_ids": SMOKE_IDS[:2]})
+    with pytest.raises(ValueError, match="not submitted"):
+        parse_run_summary({**data, "resolved_ids": ["other__x-1"]})
     with pytest.raises(ValueError, match="schema_version"):
         parse_run_summary({**data, "schema_version": 1})
+    # Partial coverage of submitted_ids is valid (real --instance_ids behavior) ...
+    s = parse_run_summary({**data, "empty_patch_ids": SMOKE_IDS[:2]})
+    assert s.category(SMOKE_IDS[2]) == "not_submitted"
+
+
+def test_collect_rejects_requested_but_uncategorized(tmp_path: Path) -> None:
+    # ... but every *requested* id must be in exactly one category.
+    summary = _summary(submitted_ids=["a-1", "b-1"], empty_patch_ids=["a-1"])
+    eval_dir = _write_eval_dir(tmp_path, "r1", {}, summary)
+    assert collect_evaluation(eval_dir, "r1", ["a-1"])[0]["category"] == "empty_patch"
+    with pytest.raises(ValueError, match="absent from every summary category"):
+        collect_evaluation(eval_dir, "r1", ["a-1", "b-1"])
 
 
 # ------------------------------------------------- official grading contract tests

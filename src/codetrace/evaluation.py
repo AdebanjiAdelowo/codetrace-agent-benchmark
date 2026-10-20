@@ -172,15 +172,21 @@ def parse_run_summary(data: dict[str, Any]) -> RunSummary:
     if missing:
         raise ValueError(f"summary missing keys: {missing}")
     ids = {k: frozenset(data[k]) for k in _SUMMARY_ID_KEYS}
-    # The categories must partition the submitted ids (infra/ambiguous are sub-labels).
+    # Categories are mutually exclusive (infra/ambiguous are advisory sub-labels).
+    # They need not cover every submitted id: with --instance_ids, swebench 5.0.2 lists
+    # every prediction in the file under submitted_ids but only evaluates the requested
+    # subset (observed 2026-10-20). Coverage of the *requested* ids is checked in
+    # collect_evaluation.
     seen: dict[str, str] = {}
     for cat in CATEGORIES:
         for iid in ids[f"{cat}_ids"]:
             if iid in seen:
                 raise ValueError(f"{iid} is in both {seen[iid]} and {cat}")
             seen[iid] = cat
-    if set(seen) != ids["submitted_ids"]:
-        raise ValueError("outcome categories do not partition submitted_ids")
+    if not set(seen) <= ids["submitted_ids"]:
+        raise ValueError(
+            f"categorized ids not submitted: {sorted(set(seen) - ids['submitted_ids'])}"
+        )
     return RunSummary(
         schema_version=2,
         ids=ids,
@@ -207,11 +213,21 @@ def collect_evaluation(
     rows = []
     for iid in instance_ids:
         cat = summary.category(iid)
+        if cat == "not_submitted":
+            raise ValueError(f"{iid}: requested but absent from every summary category")
         row: dict[str, Any] = {
             "instance_id": iid,
             "category": cat,
             "infra_failure": iid in summary.ids["infra_failure_ids"],
-            "failure_reason": summary.failure_reasons.get(iid),
+            # Advisory only: swebench's log classifier (infra_failure.py) re-labels
+            # unresolved runs by regex and never changes `resolved`. It can misfire, e.g.
+            # "no_tests_collected" on pytest's own suite, whose tests print
+            # "collected 0 items" for inner sessions (observed 2026-10-20).
+            "harness_advisory_ambiguous": iid in summary.ids["ambiguous_failure_ids"],
+            "harness_advisory_reason": summary.failure_reasons.get(iid),
+            "patch_applied": None,
+            "resolved": cat == "resolved",
+            "has_regression": None,
         }
         if iid in reports:
             outcome = parse_instance_report(json.loads(reports[iid].read_text()), iid)
@@ -224,5 +240,8 @@ def collect_evaluation(
             row["report_path"] = str(reports[iid].relative_to(eval_dir))
         elif cat in ("resolved", "unresolved"):
             raise ValueError(f"{iid}: graded as {cat} but no report.json found")
+        # Evaluation failure: the harness could not produce a valid grade. This is
+        # distinct from a patch that applied but did not resolve the task.
+        row["evaluation_failed"] = cat in ("error", "incomplete") or bool(row["infra_failure"])
         rows.append(row)
     return rows

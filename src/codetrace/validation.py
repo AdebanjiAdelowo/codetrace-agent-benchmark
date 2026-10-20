@@ -86,7 +86,9 @@ class Expectation:
 EXPECTATIONS = {
     "empty_patch": Expectation("empty_patch"),
     "resolved": Expectation("resolved", patch_applied=True, no_regression=True),
-    "unresolved_applied": Expectation("unresolved", patch_applied=True, f2p_all_fail=True),
+    "unresolved_applied": Expectation(
+        "unresolved", patch_applied=True, f2p_all_fail=True, no_regression=True
+    ),
 }
 
 
@@ -94,6 +96,11 @@ def check_rows(rows: list[dict[str, Any]], expect: Expectation) -> list[str]:
     problems = []
     for r in rows:
         iid = r["instance_id"]
+        if r.get("evaluation_failed"):
+            problems.append(
+                f"{iid}: evaluation failed ({r['category']}, infra={r.get('infra_failure')})"
+            )
+            continue
         if r["category"] != expect.category:
             problems.append(f"{iid}: category {r['category']} != expected {expect.category}")
             continue

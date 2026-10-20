@@ -43,9 +43,14 @@ as such.
 
 ```
 runs/<experiment_id>/
+  experiment_manifest.json         # commit SHA, dirty flag, dataset revision, task ids, environment
   config.resolved.json
   evaluator_dataset.jsonl          # pinned full records (evaluator side only)
   predictions/<config>__s<seed>.jsonl
-  evaluate.sh                      # official harness commands (PENDING until executed)
+  evaluate.sh                      # official harness commands
+  evaluation/                      # harness working directory
+    <model>.<run_id>.json          # harness run summary (schema_version 2)
+    logs/run_evaluation/<run_id>/<model>/<instance_id>/report.json
+    results.jsonl                  # `codetrace collect-eval`: one checked row per task and run
   runs/<run_id>/{trace.jsonl, patch.diff, result.json}
 ```

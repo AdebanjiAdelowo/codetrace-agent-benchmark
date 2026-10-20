@@ -1,7 +1,8 @@
 # Experimental Protocol and Metric Definitions
 
 Status of this document: **design (pre-registration draft)**. Metric code is Phase 2 work;
-nothing here has been computed on model runs yet. See [STATUS.md](STATUS.md).
+nothing here has been computed on model runs yet. The evaluation pipeline that §4.4 depends on
+has been verified as described in §10. See [STATUS.md](STATUS.md).
 
 ## 1. Research questions
 
@@ -100,7 +101,9 @@ is attributed to the `context_compaction` event that removed it.
 | Resolved | `resolved == true` in the official per-instance `report.json` | SWE-bench harness only |
 | Regression | `PASS_TO_PASS.failure` non-empty | SWE-bench harness only |
 | Patch applied | `patch_successfully_applied` | SWE-bench harness only |
-| Evaluation error | harness error or missing report: reported as its own category, never as unresolved | harness logs |
+| Evaluation error | harness error or missing report: reported as its own category, never as unresolved | harness summary `error_ids` |
+| Empty patch | no edits submitted. The harness skips these before any container runs (category `empty_patch`) and they count as **not resolved** in the resolved rate | harness summary `empty_patch_ids` |
+| Infrastructure failure | harness-classified environment fault (`infra_failure`, 5.x): re-run, never scored as a model failure | `report.json`, summary `infra_failure_ids` |
 | Tokens | sum over model calls of `total_processed` (uncached input + cache reads + cache writes + output), also reported per component | `model_response.usage` (provider-reported) |
 | Cost (USD) | per-component tokens times the list price on the run date, with the price table recorded alongside the results | derived |
 | Overhead | tokens and wall time attributable to ledger maintenance and retrieval calls (B and C) | tagged trace events |
@@ -187,3 +190,54 @@ original hidden reasoning; this is a stated limitation.
   failures.
 - **Tool design**: there is no shell or test execution, which differs from agents that run
   tests. Results are conditional on this tool set.
+- **Live-API behavior untested**: the adapter is verified only against mocks. Server-side
+  acceptance of echoed content blocks and prompt-cache behavior are first checked in the live
+  pilot, which therefore counts as an engineering check, not a data point.
+- **Negative-control scope**: the control (a trailing comment) checks the applied and
+  unresolved path only. It does not exercise patch-apply failures or timeouts inside containers.
+
+## 10. Evaluation-pipeline validity (verified 2026-10-20)
+
+Every outcome metric depends on the official evaluator being run and read correctly.
+Verified so far:
+
+- The official CLI runs on our pinned dataset export and predictions and classifies empty
+  patches correctly. Run on the three smoke predictions, with the summary preserved as a test fixture.
+- The CodeTrace parser agrees with the official grading function on the resolved,
+  regression, not-fixed, and patch-apply-failure paths.
+- Summary and per-instance reports are cross-checked. Any disagreement aborts collection
+  instead of producing a number.
+- Outcome categories (`empty_patch`, `incomplete`, `error`, `resolved`, `unresolved`) are
+  mutually exclusive and must partition the submitted ids.
+
+**Gate before any outcome is reported**: the known-answer bundle
+(`eval_bundles/harness_validation_v1`) must pass on the evaluation host, with gold 3/3
+resolved and the negative control 3/3 applied and unresolved with FAIL_TO_PASS failing.
+This has not run yet (STATUS.md, PENDING).
+
+## 11. Phase 2 plan (context-loss instrumentation and ground truth)
+
+Each step ends with tests that run offline. Steps 1 to 4 need no model calls.
+
+1. **Evidence-unit schema and storage.** A Pydantic `EvidenceUnit` (§2.1) and per-task
+   YAML files in an evaluator-side `annotations/` directory, with an isolation test that the
+   agent loop and tools cannot read them.
+2. **Automatic edit sites.** Map reference-patch hunks onto base-commit lines (removed lines,
+   or the anchor lines around pure insertions). Unit-tested on synthetic patches and checked
+   by hand on the 3 pilot tasks.
+3. **Metrics module (`codetrace.metrics`).** Coverage with `tau` in {any, 0.5, 1.0}; DR,
+   CRR, run-level L, and unit-level loss attributed to `context_compaction` events; explicit
+   undefined-value handling and counts. Validated on **synthetic traces with known answers**:
+   scripted models view, reset, and re-read known spans so each metric value is computed by
+   hand in advance.
+4. **Annotation guide and pilot labels.** Write the full guide, have two annotators label
+   the 3 pilot tasks independently, report line-level F1 and kappa, adjudicate, and revise
+   the guide. Labels are versioned and frozen before any live run is analyzed.
+5. **Engineering live check (needs approval for spend).** One configuration A run on one
+   pilot task, after the Docker harness gate (§10) passes. Purpose: confirm live-API
+   acceptance, caching, usage accounting, and trace completeness. Not a data point.
+6. **Configurations B and C.** Ledger and retrieval tools emit `retrieval` and ledger events.
+   Overhead is tagged, the budgets are shared, and the configuration diffs are listed in the
+   manifest.
+7. **Freeze the 10 to 20 task set and the analysis code** (bootstrap, sign test) before the
+   scaled runs. Commit both, then run only from a clean commit.

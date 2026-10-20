@@ -34,19 +34,39 @@ The test suite and smoke run need no GPU, no Docker, and no API key. Test runtim
 - On this Mac the images would run under x86_64 emulation, which is slower and has a higher
   risk of timeouts.
 
-**Current status: insufficient.** The host volume has about 7.5 GiB free (99% used). Docker
+**Current status: insufficient.** The host volume had about 7.5 GiB free on first
+inspection and 4.7 GiB at the latest check (2026-10-20), shared with other projects. Docker
 holds 15.9 GB of images and 23.9 GB of build cache (16.4 GB reported reclaimable), possibly
 used by other projects on this machine. Nothing has been deleted. Cleanup needs explicit
 approval after confirming no other project depends on it.
 
+### What needs Docker and what does not
+
+Predictions with empty patches are skipped by the harness before any container starts, so
+they need no images (verified locally). Only non-empty patches need the images above.
+
 ### Options
 
-1. **Remote x86_64 Linux host** (recommended): any VM with 8 or more cores, 16 GB or more RAM,
-   and 120 GB disk. Copy `runs/<experiment>/` and run `evaluate.sh` there.
-2. **Modal** (supported by the harness): add `--modal true` (`evaluator_command(..., modal=True)`).
+1. **GitHub-hosted runner** (prepared: `.github/workflows/swebench-harness-validation.yml`):
+   native x86_64 `ubuntu-24.04`. The workflow frees preinstalled SDKs on the throwaway VM
+   before pulling images and logs disk usage before and after.
+   - Trigger: manual (`workflow_dispatch`) only. Needs a GitHub remote and a push, which
+     need approval.
+   - Cost bound: `timeout-minutes: 120` per run, one run at a time (`concurrency`). Public
+     repositories use standard runners free of charge. Private repositories consume the
+     account's included Actions minutes. Check the account's spending limit before
+     triggering (not verified here).
+   - Risk: unauthenticated Docker Hub pulls are rate-limited. A failed pull appears as a
+     harness error, never as an outcome.
+2. **Other x86_64 Linux host**: any VM with 8 or more cores, 16 GB or more RAM, and enough disk
+   for the images. Run `uv sync --locked --extra eval && uv run codetrace validate-harness
+   --bundle eval_bundles/harness_validation_v1 --out runs/harness_validation_v1`, or an
+   experiment's `evaluate.sh`. Paid provisioning needs approval.
+3. **Modal** (supported by the harness, paid, needs approval): add `--modal true` (`evaluator_command(..., modal=True)`).
    Needs a Modal account and token configured outside this repository.
-3. **Local**, after freeing disk with approval:
-   `bash runs/<experiment>/evaluate.sh` from the repository root with the `eval` extra installed.
+4. **Local**, after freeing disk with approval:
+   `bash runs/<experiment>/evaluate.sh` with the `eval` extra installed (the script runs the
+   harness inside the experiment's `evaluation/` directory).
 
 ## Model API cost (*estimates*; nothing has been spent)
 

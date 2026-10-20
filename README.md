@@ -52,8 +52,10 @@ src/codetrace/
   agent.py            agent loop with trace instrumentation
   trace.py            trace schema, writer, validator
   evaluation.py       predictions file, official evaluator command, report parsing
+  validation.py       known-answer checks of the official evaluator
   models/             model interface, Anthropic adapter, offline scripted models
 configs/              experiment configurations
+eval_bundles/         prediction sets for evaluator validation
 docs/                 methodology, metric definitions, protocol, resources
 schemas/              exported JSON schema for traces
 tests/                unit and integration tests (offline, CPU only)
@@ -77,11 +79,29 @@ uv sync --extra anthropic
 uv run codetrace run --config configs/pilot_anthropic.yaml --allow-paid
 ```
 
-Each experiment writes `runs/<experiment_id>/` containing per-run traces, patches,
-predictions in the official SWE-bench format, and an `evaluate.sh` script that invokes
-the official evaluator. Evaluation needs Docker and substantial disk space; see
-[docs/RESOURCES.md](docs/RESOURCES.md). The evaluator can also run remotely through the
-harness's Modal backend.
+Each experiment writes `runs/<experiment_id>/` containing an experiment manifest (code
+commit, dataset revision, environment), per-run traces and patches, predictions in the
+official SWE-bench format, and an `evaluate.sh` script that invokes the official evaluator.
+Paid runs must start from a clean, committed working tree.
+
+```bash
+bash runs/<experiment_id>/evaluate.sh                       # official SWE-bench evaluator
+uv run codetrace collect-eval --experiment-dir runs/<experiment_id>
+```
+
+Before outcomes are trusted, a known-answer bundle checks the evaluator on the target
+host: reference patches must resolve, and a comment-only negative control must apply
+without resolving.
+
+```bash
+uv sync --extra eval
+uv run codetrace validate-harness --bundle eval_bundles/harness_validation_v1 \
+    --out runs/harness_validation_v1
+```
+
+Evaluation with Docker needs an x86_64 host and substantial disk space; see
+[docs/RESOURCES.md](docs/RESOURCES.md). A manually triggered GitHub Actions workflow runs
+the known-answer check on a hosted x86_64 runner.
 
 ## Documentation
 

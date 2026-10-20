@@ -26,12 +26,22 @@ from codetrace.evaluation import (
     shell_join,
     write_predictions,
 )
+from codetrace.evidence import (
+    auto_annotation,
+    criticality_kappa,
+    line_f1,
+    load_annotation,
+    load_annotation_set,
+    save_annotation,
+    validate_against_files,
+)
+from codetrace.metrics import aggregate, run_metrics, to_row
 from codetrace.models.base import ModelClient
 from codetrace.models.scripted import HeuristicExplorer
 from codetrace.netfix import apply_from_env as apply_ipv4_workaround
 from codetrace.trace import export_json_schema, read_trace, utc_now, validate_trace
-from codetrace.validation import run_bundle, write_control_predictions
-from codetrace.workspace import create_workspace, ensure_mirror, repo_url
+from codetrace.validation import run_bundle, sha256_file, write_control_predictions
+from codetrace.workspace import create_workspace, ensure_mirror, git, repo_url
 
 PILOT_REPOS = (
     "psf/requests",
@@ -246,6 +256,118 @@ def cmd_validate_harness(args: argparse.Namespace) -> int:
     return 0 if result["all_executed_passed"] else 1
 
 
+def _mirror_for(task_repo: str, base_commit: str) -> Path:
+    slug = task_repo.replace("/", "__")
+    return ensure_mirror(repo_url(task_repo), data_dir() / "mirrors" / slug, commits=[base_commit])
+
+
+def _file_lengths(mirror: Path, commit: str, paths: list[str]) -> dict[str, int | None]:
+    out: dict[str, int | None] = {}
+    for p in paths:
+        try:
+            out[p] = len(git("show", f"{commit}:{p}", cwd=mirror).splitlines())
+        except RuntimeError:
+            out[p] = None
+    return out
+
+
+def cmd_annotate_init(args: argparse.Namespace) -> int:
+    dataset_file = _dataset_file(Path(args.dataset) if args.dataset else None, "test")
+    tasks = load_tasks(dataset_file)
+    # Only a download at the pinned revision may claim it; a local file is identified by hash.
+    revision = (
+        DATASET_REVISION if args.dataset is None else f"local-sha256:{sha256_file(dataset_file)}"
+    )
+    root = Path(args.annotations_dir)
+    for iid in args.instance_ids:
+        t = tasks[iid]
+        ann = auto_annotation(iid, t.patch, t.base_commit, revision)
+        path = root / "auto" / f"{iid}.yaml"
+        if path.exists() and not args.overwrite:
+            raise SystemExit(f"{path} exists; pass --overwrite to regenerate")
+        save_annotation(ann, root)
+        print(f"wrote {path} ({len(ann.units)} edit-site units)")
+    return 0
+
+
+def cmd_annotate_validate(args: argparse.Namespace) -> int:
+    bad = 0
+    for f in args.paths:
+        ann = load_annotation(Path(f))
+        problems: list[str] = []
+        if ann.dataset_revision != DATASET_REVISION:
+            problems.append(f"dataset_revision {ann.dataset_revision} != pinned {DATASET_REVISION}")
+        if args.check_files:
+            repo = args.repo or ann.instance_id.rsplit("-", 1)[0].replace("__", "/")
+            mirror = _mirror_for(repo, ann.base_commit)
+            lengths = _file_lengths(mirror, ann.base_commit, sorted({u.path for u in ann.units}))
+            problems += validate_against_files(ann, lengths)
+        print(f"{f}: {'OK' if not problems else '; '.join(problems)}")
+        bad += bool(problems)
+    return 1 if bad else 0
+
+
+def cmd_annotate_agreement(args: argparse.Namespace) -> int:
+    a, b = load_annotation(Path(args.a)), load_annotation(Path(args.b))
+    if (a.instance_id, a.base_commit) != (b.instance_id, b.base_commit):
+        raise SystemExit("annotations are for different tasks")
+    result = {
+        "instance_id": a.instance_id,
+        "annotators": [a.annotator, b.annotator],
+        "required_line_f1": line_f1(a.required, b.required),
+        "all_units_line_f1": line_f1(a.units, b.units),
+        "criticality": criticality_kappa(a.units, b.units),
+    }
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def cmd_analyze(args: argparse.Namespace) -> int:
+    exp_dir = Path(args.experiment_dir)
+    anns = load_annotation_set(Path(args.annotations_dir), args.annotation_set)
+    tau: float | str = "any" if args.tau == "any" else float(args.tau)
+    rows = []
+    for tp in sorted(exp_dir.glob("runs/*/trace.jsonl")):
+        events = read_trace(tp)
+        if problems := validate_trace(events):
+            raise SystemExit(f"{tp}: invalid trace: {problems}")
+        iid = events[0].payload["manifest"]["task_instance_id"]
+        if iid not in anns:
+            raise SystemExit(f"no {args.annotation_set} annotation for {iid}")
+        ann = anns[iid]
+        if ann.status != "adjudicated" and not args.allow_provisional:
+            raise SystemExit(
+                f"{iid}: annotation status is {ann.status}; final metrics need adjudicated "
+                "annotations (pass --allow-provisional for a labelled provisional analysis)"
+            )
+        rows.append(run_metrics(events, ann, tau))  # type: ignore[arg-type]
+    provisional = any(r.annotation_status != "adjudicated" for r in rows)
+    out_dir = exp_dir / "analysis"
+    out_dir.mkdir(exist_ok=True)
+    tag = f"{args.annotation_set}_tau{args.tau}"
+    (out_dir / f"metrics_{tag}.jsonl").write_text(
+        "".join(json.dumps(to_row(r)) + "\n" for r in rows)
+    )
+    summary = {
+        "provisional": provisional,
+        "annotation_set": args.annotation_set,
+        "tau": tau,
+        "codetrace_git_commit": git_state()["commit"],
+        "per_config": aggregate(rows),
+    }
+    (out_dir / f"summary_{tag}.json").write_text(json.dumps(summary, indent=2) + "\n")
+    for r in rows:
+        crr = "NA" if r.conditional_retention is None else f"{r.conditional_retention:.2f}"
+        print(
+            f"{r.instance_id:<28} {r.agent_config} s{r.seed} DR={r.discovery_recall:.2f} "
+            f"CRR={crr} L={r.context_loss} t_edit={r.t_edit} undefined={r.undefined_reason}"
+        )
+    print(
+        ("PROVISIONAL (non-adjudicated annotations); " if provisional else "") + f"wrote {out_dir}"
+    )
+    return 0
+
+
 def cmd_export_schema(args: argparse.Namespace) -> int:
     export_json_schema(Path(args.out))
     print(f"wrote {args.out}")
@@ -294,6 +416,32 @@ def main(argv: list[str] | None = None) -> int:
     v = sub.add_parser("validate-trace", help="structural validation of trace files")
     v.add_argument("paths", nargs="+")
     v.set_defaults(func=cmd_validate_trace)
+
+    an = sub.add_parser("annotate", help="evidence annotation tooling")
+    asub = an.add_subparsers(dest="annotate_command", required=True)
+    ai = asub.add_parser("init", help="auto edit-site drafts from reference patches")
+    ai.add_argument("--instance-ids", nargs="+", required=True)
+    ai.add_argument("--annotations-dir", default="annotations")
+    ai.add_argument("--dataset")
+    ai.add_argument("--overwrite", action="store_true")
+    ai.set_defaults(func=cmd_annotate_init)
+    av = asub.add_parser("validate", help="schema and base-commit line-range checks")
+    av.add_argument("paths", nargs="+")
+    av.add_argument("--check-files", action="store_true", help="verify paths/lines at base commit")
+    av.add_argument("--repo", help="owner/name (default: derived from instance id)")
+    av.set_defaults(func=cmd_annotate_validate)
+    ag = asub.add_parser("agreement", help="inter-annotator agreement for one task")
+    ag.add_argument("a")
+    ag.add_argument("b")
+    ag.set_defaults(func=cmd_annotate_agreement)
+
+    az = sub.add_parser("analyze", help="context-loss metrics for an experiment's traces")
+    az.add_argument("--experiment-dir", required=True)
+    az.add_argument("--annotations-dir", default="annotations")
+    az.add_argument("--annotation-set", default="adjudicated")
+    az.add_argument("--tau", default="0.5", choices=["any", "0.5", "1.0"])
+    az.add_argument("--allow-provisional", action="store_true")
+    az.set_defaults(func=cmd_analyze)
 
     e = sub.add_parser("export-schema", help="write the trace JSON schema")
     e.add_argument("--out", default="schemas/trace.schema.json")

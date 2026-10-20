@@ -1,0 +1,19 @@
+schema_version: 1
+instance_id: sympy__sympy-13480
+dataset_revision: b0dde1093fe417d83b7184254edf8199c1f0dff5
+base_commit: f57fe3f4b3f2cab225749e1b3b38ae1bf80b62f0
+annotation_set: auto
+annotator: auto
+status: auto_draft
+notes:
+- support units not annotated (requires human annotators)
+units:
+- id: edit1
+  path: sympy/functions/elementary/hyperbolic.py
+  start_line: 590
+  end_line: 590
+  kind: edit_site
+  criticality: required
+  source: auto_patch
+  rationale: base-commit lines changed (or bracketing an insertion) by the reference
+    patch

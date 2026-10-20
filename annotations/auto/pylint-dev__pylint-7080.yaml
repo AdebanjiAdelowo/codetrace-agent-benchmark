@@ -1,0 +1,19 @@
+schema_version: 1
+instance_id: pylint-dev__pylint-7080
+dataset_revision: b0dde1093fe417d83b7184254edf8199c1f0dff5
+base_commit: 3c5eca2ded3dd2b59ebaf23eb289453b5d2930f0
+annotation_set: auto
+annotator: auto
+status: auto_draft
+notes:
+- support units not annotated (requires human annotators)
+units:
+- id: edit1
+  path: pylint/lint/expand_modules.py
+  start_line: 54
+  end_line: 55
+  kind: edit_site
+  criticality: required
+  source: auto_patch
+  rationale: base-commit lines changed (or bracketing an insertion) by the reference
+    patch

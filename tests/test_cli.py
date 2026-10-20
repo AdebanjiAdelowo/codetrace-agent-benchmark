@@ -161,3 +161,55 @@ def test_collect_eval_cli(
     assert main(["collect-eval", "--experiment-dir", str(exp)]) == 0
     rows = [json.loads(x) for x in (exp / "evaluation" / "results.jsonl").read_text().splitlines()]
     assert [(r["seed"], r["category"]) for r in rows] == [(0, "empty_patch"), (1, "empty_patch")]
+
+
+def test_annotate_and_analyze_cli(
+    tmp_path: Path,
+    dataset_jsonl: Path,
+    upstream_repo: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from codetrace.workspace import ensure_mirror
+
+    repo, base = upstream_repo
+    data = tmp_path / "data"
+    monkeypatch.setenv("CODETRACE_DATA_DIR", str(data))
+    ensure_mirror(str(repo), data / "mirrors" / "toy__calc", commits=[base])  # offline seed
+    anns = tmp_path / "annotations"
+    init = ["annotate", "init", "--instance-ids", "toy__calc-1", "--annotations-dir", str(anns)]
+    assert main([*init, "--dataset", str(dataset_jsonl)]) == 0
+    ann_file = anns / "auto" / "toy__calc-1.yaml"
+    with pytest.raises(SystemExit, match="exists"):
+        main([*init, "--dataset", str(dataset_jsonl)])
+    # The toy dataset revision is not the pinned one, so validate reports exactly that.
+    assert main(["annotate", "validate", "--check-files", "--repo", "toy/calc", str(ann_file)]) == 1
+    assert "dataset_revision" in capsys.readouterr().out
+    assert main(["annotate", "agreement", str(ann_file), str(ann_file)]) == 0
+    assert '"f1": 1.0' in capsys.readouterr().out
+
+    cfg = _write_cfg(tmp_path, dataset_jsonl, repo)
+    runs = tmp_path / "runs"
+    assert main(["run", "--config", str(cfg), "--runs-dir", str(runs)]) == 0
+    exp = runs / "cli_test"
+    az = [
+        "analyze",
+        "--experiment-dir",
+        str(exp),
+        "--annotations-dir",
+        str(anns),
+        "--annotation-set",
+        "auto",
+    ]
+    with pytest.raises(SystemExit, match="adjudicated"):
+        main(az)
+    assert main([*az, "--allow-provisional", "--tau", "any"]) == 0
+    summary = json.loads((exp / "analysis" / "summary_auto_tauany.json").read_text())
+    assert summary["provisional"] is True
+    assert summary["per_config"]["A_baseline"]["n_runs"] == 2
+    rows = [
+        json.loads(x)
+        for x in (exp / "analysis" / "metrics_auto_tauany.jsonl").read_text().splitlines()
+    ]
+    # The heuristic explorer reads calc/core.py around its search hit and submits no edit.
+    assert all(r["undefined_reason"] == "no_patch" and r["discovery_recall"] == 1.0 for r in rows)

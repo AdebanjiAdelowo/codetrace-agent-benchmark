@@ -25,6 +25,7 @@ from typing import Any
 
 from codetrace.dataset import DATASET_NAME, DATASET_REVISION, EvaluatorTask, export_for_evaluator
 from codetrace.evaluation import collect_evaluation, evaluator_command, write_predictions
+from codetrace.trace import utc_now
 from codetrace.workspace import create_workspace, ensure_mirror, repo_url
 
 CONTROL_COMMENT = "# codetrace negative control: comment only, no functional change\n"
@@ -108,6 +109,51 @@ def check_rows(rows: list[dict[str, Any]], expect: Expectation) -> list[str]:
 # ------------------------------------------------------------------ bundle runner
 
 
+def _cmd(args: list[str]) -> str | None:
+    proc = subprocess.run(args, capture_output=True, text=True, check=False)
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def execution_metadata(eval_ds: Path, ids: list[str]) -> dict[str, Any]:
+    """Evaluator version, Docker host, and the exact image used for each task."""
+    from importlib import metadata
+
+    from codetrace.env_info import environment_info, git_state
+
+    images = {}
+    for line in eval_ds.read_text().splitlines():
+        rec = json.loads(line)
+        if rec["instance_id"] in ids:
+            name = rec["image"]
+            fmt = "{{.Id}}|{{json .RepoDigests}}|{{.Architecture}}|{{.Size}}"
+            raw = _cmd(["docker", "image", "inspect", name, "--format", fmt])
+            if raw is None:
+                images[rec["instance_id"]] = {"image": name, "present_locally": False}
+            else:
+                iid, digests, arch, size = raw.split("|")
+                images[rec["instance_id"]] = {
+                    "image": name,
+                    "present_locally": True,
+                    "image_id": iid,
+                    "repo_digests": json.loads(digests),
+                    "architecture": arch,
+                    "size_bytes": int(size),
+                }
+    docker = _cmd(
+        ["docker", "info", "--format", "{{.ServerVersion}}|{{.Architecture}}|{{.OperatingSystem}}"]
+    )
+    server, arch, osname = (docker or "||").split("|")
+    return {
+        "swebench_version": metadata.version("swebench"),
+        "docker_server": server or None,
+        "docker_host_arch": arch or None,
+        "docker_os": osname or None,
+        "codetrace_git": git_state(),
+        "environment": environment_info(),
+        "images": images,
+    }
+
+
 def load_bundle(bundle_dir: Path) -> dict[str, Any]:
     bundle: dict[str, Any] = json.loads((bundle_dir / "bundle.json").read_text())
     if bundle["dataset"] != DATASET_NAME or bundle["dataset_revision"] != DATASET_REVISION:
@@ -121,38 +167,62 @@ def load_bundle(bundle_dir: Path) -> dict[str, Any]:
 
 
 def run_bundle(
-    bundle_dir: Path, out_dir: Path, dataset_file: Path, *, skip_docker: bool, max_workers: int = 1
+    bundle_dir: Path,
+    out_dir: Path,
+    dataset_file: Path,
+    *,
+    skip_docker: bool,
+    max_workers: int = 1,
+    instance_ids: list[str] | None = None,
+    run_names: list[str] | None = None,
 ) -> dict[str, Any]:
     """Run each prediction set through the official harness and check expectations.
 
     ``skip_docker`` runs only the sets whose expected category is ``empty_patch``.
+    ``instance_ids`` / ``run_names`` restrict the work to a subset (e.g. one task at a
+    time on a resource-constrained host); each (subset) gets its own harness run id.
     """
     bundle = load_bundle(bundle_dir)
-    ids: list[str] = bundle["instance_ids"]
+    all_ids: list[str] = bundle["instance_ids"]
+    if instance_ids is not None and not set(instance_ids) <= set(all_ids):
+        raise ValueError(f"unknown instance ids: {sorted(set(instance_ids) - set(all_ids))}")
+    ids = [i for i in all_ids if instance_ids is None or i in instance_ids]
+    names = [r["name"] for r in bundle["runs"]]
+    if run_names is not None and not set(run_names) <= set(names):
+        raise ValueError(f"unknown runs: {sorted(set(run_names) - set(names))}")
     out_dir.mkdir(parents=True, exist_ok=True)
+    # The full-bundle export is hashed against the bundle; the harness then gets it with
+    # --instance_ids restricting the work.
     eval_ds = out_dir / "evaluator_dataset.jsonl"
-    export_for_evaluator(dataset_file, ids, eval_ds)
+    export_for_evaluator(dataset_file, all_ids, eval_ds)
     ds_sha = sha256_file(eval_ds)
     result: dict[str, Any] = {
         "bundle": bundle["name"],
+        "started_at": utc_now(),
+        "execution": execution_metadata(eval_ds, ids),
         "evaluator_dataset_sha256": ds_sha,
         "evaluator_dataset_sha256_ok": ds_sha == bundle["evaluator_dataset_sha256"],
         "runs": [],
     }
     if not result["evaluator_dataset_sha256_ok"]:
         raise ValueError(f"evaluator dataset sha256 {ds_sha} != bundle")
+    suffix = "" if instance_ids is None else "__" + "_".join(i.split("__")[1] for i in ids)
     for run in bundle["runs"]:
+        if run_names is not None and run["name"] not in run_names:
+            continue
         expect = EXPECTATIONS[run["expect"]]
-        entry: dict[str, Any] = {"name": run["name"], "expect": run["expect"]}
+        entry: dict[str, Any] = {"name": run["name"], "expect": run["expect"], "instance_ids": ids}
         if skip_docker and expect.category != "empty_patch":
             entry["status"] = "skipped (needs Docker images)"
             result["runs"].append(entry)
             continue
-        eval_dir = out_dir / run["name"]
+        run_id = f"{bundle['name']}__{run['name']}{suffix}"
+        eval_dir = out_dir / f"{run['name']}{suffix}"
+        if (eval_dir / "results.json").exists():
+            raise FileExistsError(f"{eval_dir} already has results; use a new --out")
         eval_dir.mkdir(parents=True, exist_ok=True)
         preds = run["predictions"]
         preds_arg = "gold" if preds == "gold" else str((bundle_dir / preds).resolve())
-        run_id = f"{bundle['name']}__{run['name']}"
         cmd = evaluator_command(
             Path(preds_arg),
             run_id,
@@ -161,11 +231,15 @@ def run_bundle(
             max_workers=max_workers,
         )
         cmd[0] = sys.executable
+        entry["started_at"] = utc_now()
         proc = subprocess.run(cmd, cwd=eval_dir, capture_output=True, text=True, check=False)
+        entry["finished_at"] = utc_now()
         (eval_dir / "harness_stdout.txt").write_text(
             proc.stdout + "\n--- stderr ---\n" + proc.stderr
         )
         entry["harness_exit_code"] = proc.returncode
+        entry["run_id"] = run_id
+        entry["eval_dir"] = str(eval_dir)
         if proc.returncode != 0:
             entry["status"] = "harness error"
             result["runs"].append(entry)
@@ -180,5 +254,7 @@ def run_bundle(
     result["all_executed_passed"] = all(
         e["status"] in ("pass",) or e["status"].startswith("skipped") for e in result["runs"]
     )
-    (out_dir / "validation_result.json").write_text(json.dumps(result, indent=2) + "\n")
+    result["finished_at"] = utc_now()
+    tag = "validation_result" + suffix + ("" if run_names is None else "__" + "_".join(run_names))
+    (out_dir / f"{tag}.json").write_text(json.dumps(result, indent=2) + "\n")
     return result

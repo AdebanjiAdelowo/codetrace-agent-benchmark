@@ -251,6 +251,7 @@ def cmd_validate_harness(args: argparse.Namespace) -> int:
     result = run_bundle(
         Path(args.bundle), Path(args.out), dataset_file,
         skip_docker=args.skip_docker, max_workers=args.max_workers,
+        instance_ids=args.instance_ids, run_names=args.runs,
     )  # fmt: skip
     print(json.dumps(result, indent=2))
     return 0 if result["all_executed_passed"] else 1
@@ -411,6 +412,8 @@ def main(argv: list[str] | None = None) -> int:
     h.add_argument("--dataset")
     h.add_argument("--skip-docker", action="store_true", help="run only empty-patch sets")
     h.add_argument("--max-workers", type=int, default=1)
+    h.add_argument("--instance-ids", nargs="+", help="restrict to these bundle tasks")
+    h.add_argument("--runs", nargs="+", help="restrict to these prediction sets (e.g. gold)")
     h.set_defaults(func=cmd_validate_harness)
 
     v = sub.add_parser("validate-trace", help="structural validation of trace files")

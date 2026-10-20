@@ -32,6 +32,8 @@ class ModelResponse:
     latency_s: float
     stop_details: dict[str, Any] | None = None
     request_id: str | None = None
+    # Provider metadata relevant to billing audits (service tier, inference geo, speed).
+    meta: dict[str, Any] = field(default_factory=dict)
 
     @property
     def tool_calls(self) -> list[ToolCall]:

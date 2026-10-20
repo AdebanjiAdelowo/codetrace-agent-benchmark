@@ -71,6 +71,19 @@
         "title": "Experiment Id",
         "type": "string"
       },
+      "freeze": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Freeze"
+      },
       "model_name": {
         "title": "Model Name",
         "type": "string"
@@ -84,6 +97,19 @@
         "title": "Model Provider",
         "type": "string"
       },
+      "pricing": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Pricing"
+      },
       "repo": {
         "title": "Repo",
         "type": "string"
@@ -93,7 +119,7 @@
         "type": "string"
       },
       "schema_version": {
-        "default": "0.1.0",
+        "default": "0.2.0",
         "title": "Schema Version",
         "type": "string"
       },
@@ -117,12 +143,48 @@
         "title": "Task Instance Id",
         "type": "string"
       },
+      "task_template_sha256": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Task Template Sha256"
+      },
       "tool_names": {
         "items": {
           "type": "string"
         },
         "title": "Tool Names",
         "type": "array"
+      },
+      "tool_specs_sha256": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Tool Specs Sha256"
+      },
+      "workspace_path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Workspace Path"
       }
     },
     "required": [
@@ -160,6 +222,16 @@
       "cache_read_input_tokens": {
         "default": 0,
         "title": "Cache Read Input Tokens",
+        "type": "integer"
+      },
+      "cache_write_1h_tokens": {
+        "default": 0,
+        "title": "Cache Write 1H Tokens",
+        "type": "integer"
+      },
+      "cache_write_5m_tokens": {
+        "default": 0,
+        "title": "Cache Write 5M Tokens",
         "type": "integer"
       },
       "input_tokens": {
@@ -218,7 +290,7 @@
         "type": "string"
       },
       "schema_version": {
-        "default": "0.1.0",
+        "default": "0.2.0",
         "title": "Schema Version",
         "type": "string"
       },

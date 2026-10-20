@@ -20,7 +20,9 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_VERSION = "0.1.0"
+# 0.2.0: cache-write TTL split in TokenUsage; optional manifest fields for tool/template
+# hashes, workspace path, price table, and experiment freeze. 0.1.0 traces remain valid.
+SCHEMA_VERSION = "0.2.0"
 
 
 def utc_now() -> str:
@@ -52,6 +54,9 @@ class TokenUsage(BaseModel):
     output_tokens: int = 0
     cache_read_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
+    # Provider breakdown of cache writes by TTL (subsets of cache_creation_input_tokens).
+    cache_write_5m_tokens: int = 0
+    cache_write_1h_tokens: int = 0
     # "provider" when reported by the API; "approx_chars_div_4" for the scripted model.
     method: str = "provider"
 
@@ -75,6 +80,8 @@ class TokenUsage(BaseModel):
             cache_creation_input_tokens=(
                 self.cache_creation_input_tokens + other.cache_creation_input_tokens
             ),
+            cache_write_5m_tokens=self.cache_write_5m_tokens + other.cache_write_5m_tokens,
+            cache_write_1h_tokens=self.cache_write_1h_tokens + other.cache_write_1h_tokens,
             method=method,
         )
 
@@ -114,6 +121,12 @@ class RunManifest(BaseModel):
     environment: dict[str, Any]
     codetrace_git_commit: str | None
     started_at: str
+    # Added in 0.2.0 (optional so 0.1.0 manifests still validate).
+    tool_specs_sha256: str | None = None
+    task_template_sha256: str | None = None
+    workspace_path: str | None = None
+    pricing: dict[str, Any] | None = None
+    freeze: dict[str, Any] | None = None
 
 
 class TraceEvent(BaseModel):

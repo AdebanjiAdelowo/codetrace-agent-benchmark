@@ -16,7 +16,7 @@ Design notes for experimental validity:
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from codetrace.models.base import ModelInfo, ModelResponse
 from codetrace.trace import TokenUsage
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from anthropic.types import MessageParam, OutputConfigParam, ToolParam
 
 DEFAULT_MODEL = "claude-opus-5-5"
+CACHE_TTL: Literal["5m"] = "5m"
 
 
 class AnthropicModel:
@@ -55,7 +56,7 @@ class AnthropicModel:
                 "output_config.effort": effort,
                 "thinking": "provider default (adaptive)",
                 "fallbacks": "disabled",
-                "prompt_caching": "automatic (top-level cache_control ephemeral)",
+                "prompt_caching": f"automatic (top-level cache_control ephemeral, ttl {CACHE_TTL})",
                 "sdk_version": anthropic.__version__,
                 "max_retries": max_retries,
             },
@@ -75,15 +76,19 @@ class AnthropicModel:
             output_config=cast("OutputConfigParam", {"effort": self.effort}),
             # Top-level automatic prompt caching: the history is append-only within a
             # segment, so each request's prefix is reusable. Cost only; no behavior change.
-            cache_control={"type": "ephemeral"},
+            # TTL set explicitly so cache-write pricing is deterministic (5m rate).
+            cache_control={"type": "ephemeral", "ttl": CACHE_TTL},
         )
         latency = time.monotonic() - t0
         u = resp.usage
+        cc = getattr(u, "cache_creation", None)
         usage = TokenUsage(
             input_tokens=u.input_tokens or 0,
             output_tokens=u.output_tokens or 0,
             cache_read_input_tokens=getattr(u, "cache_read_input_tokens", 0) or 0,
             cache_creation_input_tokens=getattr(u, "cache_creation_input_tokens", 0) or 0,
+            cache_write_5m_tokens=getattr(cc, "ephemeral_5m_input_tokens", 0) or 0,
+            cache_write_1h_tokens=getattr(cc, "ephemeral_1h_input_tokens", 0) or 0,
             method="provider",
         )
         stop_details = getattr(resp, "stop_details", None)
@@ -95,4 +100,5 @@ class AnthropicModel:
             latency_s=latency,
             stop_details=stop_details.model_dump() if stop_details is not None else None,
             request_id=getattr(resp, "_request_id", None),
+            meta={k: getattr(u, k, None) for k in ("service_tier", "inference_geo", "speed")},
         )

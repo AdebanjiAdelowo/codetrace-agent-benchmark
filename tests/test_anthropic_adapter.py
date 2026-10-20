@@ -105,7 +105,7 @@ def test_request_shape_and_response_parsing() -> None:
     assert body["max_tokens"] == 1234
     assert body["system"] == "SYS"
     assert body["output_config"] == {"effort": "high"}
-    assert body["cache_control"] == {"type": "ephemeral"}
+    assert body["cache_control"] == {"type": "ephemeral", "ttl": "5m"}
     assert [t["name"] for t in body["tools"]] == [t["name"] for t in TOOL_SPECS]
     # Experimental-validity choices: no fallbacks, thinking left at the provider default.
     assert "fallbacks" not in body and "thinking" not in body and "temperature" not in body

@@ -5,6 +5,12 @@ tool, as given in the evidence column. **No language model has been called. No G
 Actions workflow has run.** Official SWE-bench Docker evaluation has been run locally
 for harness validation only (reference and negative-control patches, not agent output).
 
+## Phase 3 (in progress)
+
+Pricing module, trace schema 0.2.0, and adapter TTL/billing metadata are implemented and
+tested offline. Cost-cap enforcement, frozen pilot manifest, and the end-to-end pilot command
+are not yet implemented. See docs/SESSION_HANDOFF.md. No paid call has been made.
+
 ## Repository
 
 - <https://github.com/AdebanjiAdelowo/codetrace-agent-benchmark> (private). GitHub Actions

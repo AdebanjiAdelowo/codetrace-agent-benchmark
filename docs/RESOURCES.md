@@ -34,8 +34,21 @@ The test suite and smoke run need no GPU, no Docker, and no API key. Test runtim
 - On this Mac the images would run under x86_64 emulation, which is slower and has a higher
   risk of timeouts.
 
-**Current status: insufficient.** The host volume had about 7.5 GiB free on first
-inspection and 4.7 GiB at the latest check (2026-10-20), shared with other projects. Docker
+**Measured local run (2026-10-20, after disk was freed outside this project).** On the
+Apple Silicon host with about 32 GiB free, the three pilot tasks were evaluated
+sequentially with one image present at a time: pull, gold, control, then remove the image.
+
+| per task | measured |
+|---|---|
+| Image size (uncompressed) | 3.84 to 4.04 GB |
+| Host disk while the image is present | about 5 GiB (compressed and unpacked layers) |
+| Harness wall time, one run | 28 to 39 s (test runtime 10 to 21 s), under Rosetta |
+| Peak free disk floor observed | 26 GiB |
+| Docker VM memory | 7.75 GiB total, about 3.5 GiB used by another project's containers; one evaluation container at a time fit |
+
+Rule used: keep at least 15 GiB free, pull with `--platform linux/amd64`, `--max_workers 1`,
+and remove only images pulled for this project. Earlier in the day the host had 4.7 to
+7.5 GiB free, which is insufficient. Docker
 holds 15.9 GB of images and 23.9 GB of build cache (16.4 GB reported reclaimable), possibly
 used by other projects on this machine. Nothing has been deleted. Cleanup needs explicit
 approval after confirming no other project depends on it.

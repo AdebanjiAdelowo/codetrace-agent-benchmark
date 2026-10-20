@@ -55,6 +55,7 @@ src/codetrace/
   validation.py       known-answer checks of the official evaluator
   evidence.py         evidence-unit annotations, edit-site extraction, agreement
   metrics.py          discovery, retention, and context-loss metrics from traces
+  annotation_package.py  blinded review packages for human annotators
   models/             model interface, Anthropic adapter, offline scripted models
 configs/              experiment configurations
 eval_bundles/         prediction sets for evaluator validation
@@ -109,6 +110,7 @@ the reference patch; support units are labelled by two annotators following
 ```bash
 uv run codetrace annotate init --instance-ids <ids>
 uv run codetrace annotate validate --check-files annotations/<set>/*.yaml
+uv run codetrace annotate package        # blinded packages for two human reviewers
 uv run codetrace annotate agreement annotations/<a>/<id>.yaml annotations/<b>/<id>.yaml
 uv run codetrace analyze --experiment-dir runs/<experiment_id>   # adjudicated set, tau 0.5
 ```
@@ -123,6 +125,7 @@ the known-answer check on a hosted x86_64 runner.
 - [docs/PROTOCOL.md](docs/PROTOCOL.md): experimental protocol and metric definitions
 - [docs/TRACE_SCHEMA.md](docs/TRACE_SCHEMA.md): trace event reference
 - [docs/ANNOTATION_GUIDE.md](docs/ANNOTATION_GUIDE.md): evidence annotation procedure
+- [docs/REVIEWER_INSTRUCTIONS.md](docs/REVIEWER_INSTRUCTIONS.md): instructions sent to human reviewers
 - [docs/DATASET.md](docs/DATASET.md): dataset provenance, licensing, and task selection
 - [docs/RESOURCES.md](docs/RESOURCES.md): compute, disk, and cost requirements
 - [docs/STATUS.md](docs/STATUS.md): planned, executed, and verified results

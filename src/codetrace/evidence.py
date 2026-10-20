@@ -3,8 +3,14 @@
 Evaluator-side only. Nothing here is imported by the agent loop or tools, and the
 annotation directory is never inside an agent workspace (see tests/test_evidence.py).
 
-Annotation files live at ``annotations/<annotation_set>/<instance_id>.yaml`` where the
-set is ``auto`` (machine-derived edit sites only), an annotator id, or ``adjudicated``.
+Annotation files live at ``annotations/<annotation_set>/<instance_id>.yaml``. Sets:
+``auto`` (machine-derived edit sites), ``assistant_draft`` (AI-proposed support units, for
+comparison only), ``reviewer_a`` / ``reviewer_b`` (independent human annotation), and
+``adjudicated`` (final human ground truth).
+
+Provenance is enforced by the schema: ``annotator_kind`` is ``auto``, ``assistant``, or
+``human``, and only ``human`` annotations may carry status ``annotated`` or
+``adjudicated``. Machine or assistant output can never be mistaken for human labels.
 """
 
 from __future__ import annotations
@@ -16,7 +22,20 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-ANNOTATION_SCHEMA_VERSION = 1
+ANNOTATION_SCHEMA_VERSION = 2  # v2: role, confidence, uncertainty, depends_on, provenance
+
+Role = Literal[
+    "edit_site",  # code the reference fix changes
+    "definition",  # function/class/constant whose contract the fix relies on
+    "call_site",  # where the faulty code is invoked with the triggering input
+    "caller",  # higher-level code that produces the triggering input
+    "invariant",  # condition or convention the fix must preserve
+    "sibling_pattern",  # parallel implementation showing the intended form
+    "data_flow",  # code transforming the value that reaches the bug
+    "configuration",  # option parsing / settings that shape the input
+    "documentation",  # docstrings or comments stating intended behavior
+    "other",
+]
 _AUTO_RATIONALE = "base-commit lines changed (or bracketing an insertion) by the reference patch"
 _HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
@@ -31,12 +50,18 @@ class EvidenceUnit(BaseModel):
     kind: Literal["edit_site", "support"]
     criticality: Literal["required", "helpful"]
     source: Literal["auto_patch", "manual"]
-    rationale: str = ""
+    rationale: str = ""  # why the code is needed (evidence necessity)
+    role: Role | None = None
+    confidence: Literal["high", "medium", "low"] | None = None
+    uncertainty: str = ""  # what could make this label wrong
+    depends_on: list[str] = []  # ids of units this one is only meaningful with
 
     @model_validator(mode="after")
     def _ordered(self) -> EvidenceUnit:
         if self.end_line < self.start_line:
             raise ValueError(f"{self.id}: end_line < start_line")
+        if self.kind == "edit_site" and self.role not in (None, "edit_site"):
+            raise ValueError(f"{self.id}: edit_site units must have role edit_site")
         return self
 
     def lines(self) -> range:
@@ -52,15 +77,28 @@ class TaskAnnotation(BaseModel):
     base_commit: str
     annotation_set: str
     annotator: str
-    status: Literal["auto_draft", "annotated", "adjudicated"]
+    annotator_kind: Literal["auto", "assistant", "human"] = "auto"
+    status: Literal["auto_draft", "template", "annotated", "adjudicated"]
     notes: list[str] = []
+    external_dependencies: list[str] = []  # behavior outside the repo the fix relies on
     units: list[EvidenceUnit]
 
     @model_validator(mode="after")
-    def _unique_ids(self) -> TaskAnnotation:
+    def _consistent(self) -> TaskAnnotation:
         ids = [u.id for u in self.units]
         if len(ids) != len(set(ids)):
             raise ValueError(f"{self.instance_id}: duplicate unit ids")
+        for u in self.units:
+            missing = [d for d in u.depends_on if d not in ids]
+            if missing:
+                raise ValueError(f"{self.instance_id}: {u.id} depends on unknown units {missing}")
+        if self.status in ("annotated", "adjudicated") and self.annotator_kind != "human":
+            raise ValueError(
+                f"{self.instance_id}: status {self.status} requires annotator_kind human "
+                f"(got {self.annotator_kind})"
+            )
+        if self.status == "template" and self.annotator_kind != "human":
+            raise ValueError(f"{self.instance_id}: templates are for human reviewers")
         return self
 
     @property
@@ -159,8 +197,9 @@ def auto_annotation(
     units = [
         EvidenceUnit(
             id=f"edit{i}", path=p, start_line=lo, end_line=hi, kind="edit_site",
-            criticality="required", source="auto_patch",
+            criticality="required", source="auto_patch", role="edit_site",
             rationale=_AUTO_RATIONALE,
+            uncertainty="machine-derived; a human reviewer must confirm the range",
         )
         for i, (p, lo, hi) in enumerate(spans, 1)
     ]  # fmt: skip

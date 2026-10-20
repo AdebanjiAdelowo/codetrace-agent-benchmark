@@ -93,7 +93,10 @@ def create_workspace(mirror_dir: Path, base_commit: str, dest: Path) -> Workspac
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         tar.extractall(dest, filter="data")
     git("init", "--quiet", "-b", "baseline", cwd=dest)
-    git("add", "-A", cwd=dest)
+    # --force: the baseline must equal the upstream tree exactly, including files that
+    # upstream tracks under .gitignore'd paths (e.g. pylint's tests/.pylint_primer_tests/
+    # .gitkeep). Otherwise edits to such files would be missing from the agent's patch.
+    git("add", "-A", "--force", cwd=dest)
     git("commit", "--quiet", "--no-verify", "-m", f"baseline {base_commit}", cwd=dest)
     sha = git("rev-parse", "HEAD", cwd=dest).decode().strip()
     return Workspace(path=dest, base_commit=base_commit, baseline_sha=sha)

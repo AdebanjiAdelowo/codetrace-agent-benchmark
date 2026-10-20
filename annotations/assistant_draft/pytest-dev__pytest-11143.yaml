@@ -1,0 +1,70 @@
+schema_version: 2
+instance_id: pytest-dev__pytest-11143
+dataset_revision: b0dde1093fe417d83b7184254edf8199c1f0dff5
+base_commit: 6995257cf470d2143ad1683824962de4071c0eb7
+annotation_set: assistant_draft
+annotator: claude-opus-5-5 (AI assistant)
+annotator_kind: assistant
+status: auto_draft
+notes:
+- Assistant draft for comparison only. Written by an AI assistant from reading the
+  issue, reference patch, and base-commit code. Not a human label; reviewers must
+  annotate independently before viewing it.
+external_dependencies:
+- 'Python >= 3.8 ast: every literal is ast.Constant, so a module whose first statement
+  is a numeric literal yields Expr(Constant(int))'
+units:
+- id: edit1
+  path: src/_pytest/assertion/rewrite.py
+  start_line: 678
+  end_line: 679
+  kind: edit_site
+  criticality: required
+  source: auto_patch
+  rationale: base-commit lines changed (or bracketing an insertion) by the reference
+    patch
+  role: edit_site
+  confidence: null
+  uncertainty: machine-derived; a human reviewer must confirm the range
+  depends_on: []
+- id: s1
+  path: src/_pytest/assertion/rewrite.py
+  start_line: 744
+  end_line: 746
+  kind: support
+  criticality: required
+  source: manual
+  rationale: is_rewrite_disabled evaluates `"PYTEST_DONT_REWRITE" in docstring`, which
+    raises TypeError for a non-str constant; this is the crash the fix must prevent.
+  role: definition
+  confidence: high
+  uncertainty: A fix could guard inside is_rewrite_disabled instead; the unit is needed
+    either way.
+  depends_on:
+  - edit1
+- id: s2
+  path: src/_pytest/assertion/rewrite.py
+  start_line: 680
+  end_line: 683
+  kind: support
+  criticality: required
+  source: manual
+  rationale: Where item.value.value (possibly an int) is passed to is_rewrite_disabled.
+  role: call_site
+  confidence: high
+  uncertainty: Adjacent to edit1; viewing edit1 with any context almost always covers
+    it.
+  depends_on:
+  - s1
+- id: s3
+  path: src/_pytest/assertion/rewrite.py
+  start_line: 668
+  end_line: 671
+  kind: support
+  criticality: helpful
+  source: manual
+  rationale: Shows the separate module-docstring path (getattr(mod, 'docstring')).
+  role: data_flow
+  confidence: low
+  uncertainty: Likely irrelevant on Python >= 3.8 where Module has no docstring attribute.
+  depends_on: []

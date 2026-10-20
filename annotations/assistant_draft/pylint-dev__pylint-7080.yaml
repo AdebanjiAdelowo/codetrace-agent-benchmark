@@ -1,0 +1,86 @@
+schema_version: 2
+instance_id: pylint-dev__pylint-7080
+dataset_revision: b0dde1093fe417d83b7184254edf8199c1f0dff5
+base_commit: 3c5eca2ded3dd2b59ebaf23eb289453b5d2930f0
+annotation_set: assistant_draft
+annotator: claude-opus-5-5 (AI assistant)
+annotator_kind: assistant
+status: auto_draft
+notes:
+- Assistant draft for comparison only. Written by an AI assistant from reading the
+  issue, reference patch, and base-commit code. Not a human label; reviewers must
+  annotate independently before viewing it.
+- 'Not annotated: where the ignore-paths option is parsed into regexes (location not
+  verified).'
+external_dependencies:
+- os.walk yields roots prefixed by the starting path (e.g. './src/gen' when walking
+  '.')
+- re.Pattern.match anchors at the start of the string, so './src/gen' does not match
+  '^src/gen/.*$'
+units:
+- id: edit1
+  path: pylint/lint/expand_modules.py
+  start_line: 54
+  end_line: 55
+  kind: edit_site
+  criticality: required
+  source: auto_patch
+  rationale: base-commit lines changed (or bracketing an insertion) by the reference
+    patch
+  role: edit_site
+  confidence: null
+  uncertainty: machine-derived; a human reviewer must confirm the range
+  depends_on: []
+- id: s1
+  path: pylint/lint/expand_modules.py
+  start_line: 56
+  end_line: 60
+  kind: support
+  criticality: required
+  source: manual
+  rationale: The ignore-paths check matches the raw element against the path regexes;
+    normalizing element before this is the fix.
+  role: invariant
+  confidence: high
+  uncertainty: Overlaps the function the edit lives in; distinct from edit1's lines.
+  depends_on:
+  - edit1
+- id: s2
+  path: pylint/lint/pylinter.py
+  start_line: 595
+  end_line: 607
+  kind: support
+  criticality: required
+  source: manual
+  rationale: In --recursive=y mode, os.walk roots such as './src/gen' are passed to
+    _is_ignored_file, which is why ignore-paths is bypassed only in recursive mode.
+  role: caller
+  confidence: medium
+  uncertainty: A developer could fix the symptom (normalize paths) without reading
+    this caller; necessity is a judgment call.
+  depends_on: []
+- id: s3
+  path: pylint/lint/expand_modules.py
+  start_line: 44
+  end_line: 46
+  kind: support
+  criticality: helpful
+  source: manual
+  rationale: _is_in_ignore_list_re uses pattern.match, anchored at the string start.
+  role: definition
+  confidence: medium
+  uncertainty: Explains the mechanism; not strictly needed to write the normalization.
+  depends_on: []
+- id: s4
+  path: pylint/lint/expand_modules.py
+  start_line: 76
+  end_line: 81
+  kind: support
+  criticality: helpful
+  source: manual
+  rationale: The non-recursive path also calls _is_ignored_file; the fix must keep
+    it working.
+  role: call_site
+  confidence: medium
+  uncertainty: Regression risk is low for a normalization.
+  depends_on: []

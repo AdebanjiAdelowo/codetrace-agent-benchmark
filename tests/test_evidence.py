@@ -131,6 +131,7 @@ EVALUATOR_SIDE = {
     "codetrace.metrics",
     "codetrace.validation",
     "codetrace.evaluation",
+    "codetrace.annotation_package",
 }
 
 
@@ -151,3 +152,74 @@ def test_annotations_unreachable_from_agent_tools(tmp_path: Path) -> None:
     tools = RepoTools(ws)
     assert tools.call("read_file", {"path": "../annotations/auto/t.yaml"}).is_error
     assert tools.call("search_code", {"pattern": "edit_site"}).text == "no matches"
+
+
+# ------------------------------------------------------------------ schema v2 rules
+
+
+def _ann_dict(**over: object) -> dict[str, object]:
+    base = auto_annotation("t", REFERENCE_PATCH, "abc", "rev").model_dump()
+    base.update(over)
+    return base
+
+
+def test_only_humans_can_annotate_or_adjudicate() -> None:
+    from codetrace.evidence import TaskAnnotation
+
+    for status in ("annotated", "adjudicated"):
+        for kind in ("auto", "assistant"):
+            with pytest.raises(ValidationError, match="requires annotator_kind human"):
+                TaskAnnotation.model_validate(_ann_dict(status=status, annotator_kind=kind))
+        TaskAnnotation.model_validate(_ann_dict(status=status, annotator_kind="human"))
+    with pytest.raises(ValidationError, match="templates are for human"):
+        TaskAnnotation.model_validate(_ann_dict(status="template", annotator_kind="assistant"))
+
+
+def test_dependencies_and_roles_validated() -> None:
+    from codetrace.evidence import TaskAnnotation
+
+    unit = {**_ann_dict()["units"][0], "id": "s1", "kind": "support", "role": "definition",  # type: ignore[index]
+            "source": "manual", "depends_on": ["edit1"], "confidence": "medium"}  # fmt: skip
+    ok = TaskAnnotation.model_validate(_ann_dict(units=[*_ann_dict()["units"], unit]))  # type: ignore[misc]
+    assert ok.units[1].depends_on == ["edit1"]
+    with pytest.raises(ValidationError, match="unknown units"):
+        TaskAnnotation.model_validate(_ann_dict(units=[{**unit, "depends_on": ["nope"]}]))
+    with pytest.raises(ValidationError, match="role edit_site"):
+        EvidenceUnit(id="x", path="a", start_line=1, end_line=1, kind="edit_site",
+                     criticality="required", source="manual", role="caller")  # fmt: skip
+
+
+def test_v1_files_still_load(tmp_path: Path) -> None:
+    import yaml
+
+    v1 = _ann_dict(schema_version=1)
+    v1.pop("annotator_kind")
+    v1.pop("external_dependencies")
+    for u in v1["units"]:  # type: ignore[attr-defined]
+        for k in ("role", "confidence", "uncertainty", "depends_on"):
+            u.pop(k)
+    p = tmp_path / "v1.yaml"
+    p.write_text(yaml.safe_dump(v1))
+    ann = load_annotation(p)
+    assert ann.annotator_kind == "auto" and ann.units[0].role is None
+
+
+def test_committed_annotation_sets_respect_provenance() -> None:
+    from codetrace.evidence import load_annotation_set
+
+    root = Path(__file__).parents[1] / "annotations"
+    auto = load_annotation_set(root, "auto")
+    draft = load_annotation_set(root, "assistant_draft")
+    assert (
+        set(auto)
+        == set(draft)
+        == {"pytest-dev__pytest-11143", "sympy__sympy-13480", "pylint-dev__pylint-7080"}
+    )
+    for a in auto.values():
+        assert (a.annotator_kind, a.status) == ("auto", "auto_draft")
+    for d in draft.values():
+        assert (d.annotator_kind, d.status) == ("assistant", "auto_draft")
+        assert all(u.confidence and u.rationale for u in d.units if u.kind == "support")
+        # Edit sites in the draft are exactly the machine-derived ones.
+        assert [u for u in d.units if u.kind == "edit_site"] == auto[d.instance_id].units
+    assert not (root / "adjudicated").exists()  # no human ground truth exists yet

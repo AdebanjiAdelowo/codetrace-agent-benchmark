@@ -11,3 +11,5 @@ logs/
 *.parquet
 .env
 .env.*
+# Reviewer packages contain benchmark issue text, reference patches, and hidden tests
+review_packages/

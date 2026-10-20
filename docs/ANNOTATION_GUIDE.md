@@ -17,7 +17,16 @@ developer needs in order to write a correct fix.
 | `kind` | `edit_site`: code the reference fix changes. `support`: code that must be read to write the fix correctly |
 | `criticality` | `required` or `helpful` (see §3) |
 | `source` | `auto_patch` (machine-derived) or `manual` |
-| `rationale` | one sentence: why this code is needed |
+| `rationale` | one sentence: why this code is needed (evidence necessity) |
+| `role` | `edit_site`, `definition`, `call_site`, `caller`, `invariant`, `sibling_pattern`, `data_flow`, `configuration`, `documentation`, `other` |
+| `confidence` | `high`, `medium`, `low`: the annotator's confidence in the label |
+| `uncertainty` | what could make the label wrong |
+| `depends_on` | ids of units this one is only meaningful with |
+
+Task-level fields: `external_dependencies` (behavior outside the repository the fix relies
+on, such as language or standard-library semantics) and `annotator_kind`
+(`auto`, `assistant`, or `human`). Only human annotations may have status `annotated` or
+`adjudicated`; the schema rejects anything else.
 
 ## 2. Edit sites (automatic, then checked)
 
@@ -56,16 +65,20 @@ because blank lines or comments occur inside it.
 ## 4. Process
 
 1. `codetrace annotate init --instance-ids <ids>` creates `annotations/auto/<id>.yaml`.
-2. Each annotator copies it to `annotations/<annotator_id>/<id>.yaml`, sets `annotator`,
-   `annotation_set`, and `status: annotated`, then adds support units **independently**
-   (no discussion before both are done).
-3. `codetrace annotate validate --check-files annotations/<annotator_id>/*.yaml`.
-4. `codetrace annotate agreement annotations/<a>/<id>.yaml annotations/<b>/<id>.yaml`
+2. `codetrace annotate package` builds one blinded package per reviewer in
+   `review_packages/<reviewer>/` (instructions, this guide, task briefs, and a template per
+   task with the edit sites pre-filled). Send each package separately. Packages contain no
+   other annotator's work.
+3. Each reviewer fills in their templates **independently** (no discussion before both
+   are done), sets `annotator` and `status: annotated`, and returns them. They are stored
+   as `annotations/<reviewer_id>/<id>.yaml`.
+4. `codetrace annotate validate --check-files annotations/<annotator_id>/*.yaml`.
+5. `codetrace annotate agreement annotations/<a>/<id>.yaml annotations/<b>/<id>.yaml`
    reports line-level F1 on required units and on all units, plus Cohen's kappa on
    criticality for matched units (line Jaccard ≥ 0.5). Record the results before discussion.
-5. Adjudicate by discussion. Write `annotations/adjudicated/<id>.yaml` with
+6. Adjudicate by discussion. Write `annotations/adjudicated/<id>.yaml` with
    `status: adjudicated`. Record the disagreements that were resolved in `notes`.
-6. Freeze: commit the adjudicated set before any live run is analyzed. Later changes need
+7. Freeze: commit the adjudicated set before any live run is analyzed. Later changes need
    a new guide version and must be reported.
 
 `codetrace analyze` uses `annotations/adjudicated/` by default and refuses any other

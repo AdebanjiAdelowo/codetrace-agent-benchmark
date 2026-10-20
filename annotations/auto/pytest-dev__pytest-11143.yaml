@@ -1,12 +1,14 @@
-schema_version: 1
+schema_version: 2
 instance_id: pytest-dev__pytest-11143
 dataset_revision: b0dde1093fe417d83b7184254edf8199c1f0dff5
 base_commit: 6995257cf470d2143ad1683824962de4071c0eb7
 annotation_set: auto
 annotator: auto
+annotator_kind: auto
 status: auto_draft
 notes:
 - support units not annotated (requires human annotators)
+external_dependencies: []
 units:
 - id: edit1
   path: src/_pytest/assertion/rewrite.py
@@ -17,3 +19,7 @@ units:
   source: auto_patch
   rationale: base-commit lines changed (or bracketing an insertion) by the reference
     patch
+  role: edit_site
+  confidence: null
+  uncertainty: machine-derived; a human reviewer must confirm the range
+  depends_on: []

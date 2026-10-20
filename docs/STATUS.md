@@ -1,100 +1,132 @@
 # Status: Planned, Executed, Verified
 
 Last updated: 2026-10-20. "Verified" means checked against an artifact or an independent
-tool, as given in the evidence column. **No language model has been called. No benchmark
-task has been graded inside a Docker container. No GitHub Actions workflow has run.**
+tool, as given in the evidence column. **No language model has been called. No GitHub
+Actions workflow has run.** Official SWE-bench Docker evaluation has been run locally
+for harness validation only (reference and negative-control patches, not agent output).
 
-## Repository and commits
+## Repository
 
-- Repository: <https://github.com/AdebanjiAdelowo/codetrace-agent-benchmark> (private).
-  Created 2026-10-20. Pushed normally, with no force-push and no history rewrite.
-- **GitHub Actions is disabled on the repository** (set before the first push), so pushes
-  start no workflow. See "Docker validation" below for why.
+- <https://github.com/AdebanjiAdelowo/codetrace-agent-benchmark> (private). GitHub Actions
+  is disabled on the repository and has never run (billing could not be verified; see
+  RESOURCES.md). Pushes are fast-forward only; history has never been rewritten.
+- Commit history: `git log`. Commits cited below: `a1be786` and `1c4615b` (validation
+  tooling at the time of each Docker run).
 
-| commit | content |
+## Official Docker validation (local, 2026-10-20): PASSED, 6/6 controls
+
+| item | value |
 |---|---|
-| `9f1901de22fd6c265379deee8d6210bfe36f29aa` | Phase 1: harness, tracing, evaluation bridge, docs |
-| `52236e89ba3519ebe33561aaf4fba47cf2d2760f` | Verification milestone: evaluator validation, adapter mocks, provenance |
-| `caa7d80c5f7437c6ad2ba4893f5c958fbcfd8fd3` | Docs: verified outcomes, limitations, Phase 2 plan |
-| `c5df5ea5938d3df4ade8b30b7b8fa37b654c7df9` | Workflow hardening: SHA-pinned actions, no credential persistence, env-passed input |
-| `d7bb033af32ebe1e202866d9446f25a2c23bc1d0` | Phase 2 (offline): evidence units, annotation tooling, retention metrics |
+| Evaluator | `swebench==5.0.2`, `python -m swebench.harness.run_evaluation`, `--max_workers 1`, `--timeout 1800` |
+| Dataset | `SWE-bench/SWE-bench_Lite@b0dde1093fe417d83b7184254edf8199c1f0dff5`, pinned local export (SHA-256 `41ada449…`) |
+| Host | Apple Silicon (arm64), macOS 26.6.2, Docker Desktop 29.8.2 (aarch64 VM, 7.75 GiB). amd64 images run through Rosetta translation (`uname -m` = `x86_64`, CPU `VirtualApple`) |
+| Images | official `swebench/sweb.eval.x86_64.*:latest`, pre-pulled with `--platform linux/amd64` because the harness pulls without a platform. IDs: pytest `sha256:e08ce142adec…` (3.84 GB), sympy `sha256:98270682f905…` (3.94 GB), pylint `sha256:3389f0d1319c…` (4.04 GB) |
+| Artifacts | `runs/harness_validation_v1_docker/` (git-ignored): official summaries, `report.json`, `test_output.txt`, `run_instance.log`, `eval.sh`, `patch.diff` per run, plus `MANIFEST.sha256` (62 files; manifest SHA-256 `151df27c…`) |
 
-Pre-push checks (2026-10-20): full-history secret scan clean. Nothing from `runs/`, `logs/`,
-`.codetrace_data/`, `.venv`, credential files, or datasets was ever committed. The only
-dataset-like strings are synthetic test fixtures. The push payload was 86 objects (420 KiB).
+| task | control | official category | patch applied | FAIL_TO_PASS | PASS_TO_PASS | test runtime | expectation |
+|---|---|---|---|---|---|---|---|
+| `pytest-dev__pytest-11143` | gold | resolved | yes | 1/1 pass | 114/114 pass | 13.2 s | **met** |
+| `pytest-dev__pytest-11143` | comment-only | unresolved | yes | 0/1 pass | 114/114 pass | 14.2 s | **met** |
+| `sympy__sympy-13480` | gold | resolved | yes | 1/1 pass | 43/43 pass | 10.1 s | **met** |
+| `sympy__sympy-13480` | comment-only | unresolved | yes | 0/1 pass | 43/43 pass | 10.6 s | **met** |
+| `pylint-dev__pylint-7080` | gold | resolved | yes | 1/1 pass | 120/120 pass | 20.6 s | **met** |
+| `pylint-dev__pylint-7080` | comment-only | unresolved | yes | 0/1 pass | 120/120 pass | 20.8 s | **met** |
 
-## Docker validation (official evaluator): NOT RUN, blocked on billing verification
+No regressions, no evaluation errors, no infrastructure failures, no leftover containers.
+Each task ran sequentially with one image present at a time.
 
-| item | state |
+Notes on the evidence:
+
+- **Independent cross-check.** `scripts/crosscheck_reports.py` re-derives every graded
+  test's status from the raw `test_output.txt` without the harness's log parsers and
+  compares it with `report.json`, CodeTrace's parser, and the summary category: 6/6 agree
+  (`runs/harness_validation_v1_docker/crosscheck.json`).
+- **pylint, ungraded failures.** The gold run exits 1 with "2 failed, 122 passed". The two
+  failures (`test_generate_toml_config*`) are in neither graded list and fail identically
+  under the control, so they are pre-existing environment failures that the dataset
+  excludes by design. The control adds exactly the FAIL_TO_PASS failure.
+- **pytest control, advisory label.** The harness summary marks it "ambiguous failure:
+  `no_tests_collected`". That label comes from a regex classifier
+  (`swebench/harness/infra_failure.py`) that matches "collected 0 items" printed by inner
+  pytest sessions inside pytest's own test suite (the same lines occur in the gold log).
+  116 tests ran. CodeTrace records the label as advisory and never lets it override the grade.
+- **pytest control, provenance.** Executed at commit `a1be786`, where CodeTrace's old
+  summary parser raised on the real summary after the harness had finished. Fixed in
+  `1c4615b` and re-collected from the cached official outputs (no re-execution; report
+  and test log byte-identical, first-attempt stdout and summary kept as `*.attempt1.*`).
+
+## Report parser: validated on real container output
+
+| finding on real 5.0.2 output | fix |
 |---|---|
-| Workflow | `.github/workflows/swebench-harness-validation.yml`, manual trigger, `timeout-minutes: 120`, `ubuntu-24.04` (x86_64) |
-| External services | none paid. GitHub-hosted runner, PyPI, Hugging Face (anonymous), Docker Hub (anonymous) |
-| Billing check | **failed to verify**. The `gh` token lacks the `user` scope that every billing endpoint requires, and the account plan is not readable. Adding the scope needs an interactive login (`gh auth refresh -h github.com -s user`) |
-| Decision | per the milestone's cost rule, the workflow was **not triggered** and Actions was disabled before the first push so CI could not start either |
-| Actions run URL | none (no run exists) |
-| Gold controls (3) | **not run**, expected resolved |
-| Negative controls (3) | **not run**, expected applied and unresolved with FAIL_TO_PASS failing |
-| Evaluator / dataset | `swebench==5.0.2`; `SWE-bench/SWE-bench_Lite@b0dde1093fe417d83b7184254edf8199c1f0dff5`; evaluator export SHA-256 `41ada449…` |
+| With `--instance_ids`, `submitted_ids` lists every prediction in the file, not just evaluated tasks | categories must be disjoint and cover every *requested* task; partial coverage of `submitted_ids` is valid |
+| `ambiguous_failure_ids` / `failure_reasons` can be false positives | stored as `harness_advisory_*`; never change the outcome |
+| Reports include `FAIL_TO_FAIL` and `PASS_TO_FAIL` groups | tolerated; asserted empty in the real fixtures |
+| pylint's log parser normalizes path-like parametrize ids (`[/mymodule.py]`) | independent cross-check implements the same documented id convention |
 
-To proceed once billing is confirmed:
+Rows now carry distinct fields: `patch_applied`, `resolved`, `has_regression`
+(PASS_TO_PASS failure), and `evaluation_failed` (`error` / `incomplete` / infrastructure
+failure / missing report). Regression tests use the six real reports and summaries,
+sanitized by `scripts/sanitize_eval_fixtures.py`: test ids are hashed, structure and counts
+are unchanged, and the sanitized and original copies were checked to parse identically
+(`tests/fixtures/swebench_5.0.2_docker/`, `tests/test_real_reports.py`).
 
-```bash
-gh api -X PUT repos/AdebanjiAdelowo/codetrace-agent-benchmark/actions/permissions -F enabled=true
-gh workflow run swebench-harness-validation.yml -R AdebanjiAdelowo/codetrace-agent-benchmark
-```
+## Workspace bug found and fixed
 
-## Provenance
+The structural leakage check (each agent workspace tree must equal the upstream
+base-commit tree) failed for pylint. Upstream tracks `tests/.pylint_primer_tests/.gitkeep`
+under a `.gitignore`d directory, and the baseline commit's `git add -A` skipped it. Edits
+to such files would have been missing from an agent's patch. Fixed (`git add -A --force`
+at baseline). All three pilot workspaces now reproduce the upstream tree hash exactly
+(regression test added). Existing smoke workspaces were built before the fix; their
+patches were empty, so no result is affected, and they are kept unchanged as artifacts.
 
-- Run manifests record `codetrace_git_commit` (`+dirty` when the tree differs).
-  Experiments write `experiment_manifest.json` with the commit, dirty flag, dataset revision,
-  task ids, and environment.
-- Paid runs refuse a dirty or uncommitted tree and never reuse an experiment directory.
-- Annotation files record the dataset revision they were derived from. A local dataset
-  file is recorded by SHA-256, never as the pinned revision.
-- Runs made before the first commit (`smoke_heuristic_v1`, `smoke_heuristic_v2`) record
-  `codetrace_git_commit: null` and are preserved unchanged.
+## Evidence annotation package (Phase 2, step 4)
 
-## Verification matrix
+| component | state |
+|---|---|
+| Schema v2 | `role`, `confidence`, `uncertainty`, `depends_on`, `external_dependencies`, `annotator_kind`. Only `human` annotations may be `annotated` or `adjudicated` (enforced by the schema). v1 files still load |
+| `annotations/auto/` | machine-derived edit sites, 3 tasks, checked against base files |
+| `annotations/assistant_draft/` | **AI-assistant** candidate support units (10 across 3 tasks) with role, necessity, confidence, uncertainty, and dependencies, each checked to land on the described code. **Not human labels**; for comparison after human review |
+| Reviewer packages | `codetrace annotate package` builds blinded per-reviewer directories (instructions, guide, briefs, templates; no assistant draft, no other reviewer's work), written to git-ignored `review_packages/`. Built for `reviewer_a` and `reviewer_b`; templates validated |
+| Human annotation | **not started**: needs two human reviewers. No `annotations/adjudicated/` exists, so `codetrace analyze` refuses final metrics |
 
-| item | state | evidence |
+## Verification run for this milestone
+
+| check | result |
+|---|---|
+| pytest | 129 passed, 0 skipped (with `eval` and `anthropic` extras) |
+| Ruff (lint, format) | clean |
+| mypy `--strict` | clean on 22 files (`src/codetrace`, `scripts`) |
+| Trace schema | exported schema equals committed schema; all 6 traces valid |
+| Leakage audit | `scripts/audit_runs.py` passes on both smoke experiments; workspace trees equal upstream base trees after the fix |
+| Artifact integrity | 26 pre-existing artifacts byte-identical; Docker-validation manifest verified |
+
+## Earlier verified items (unchanged)
+
+Dataset pinning and export determinism; official evaluator on empty patches; Anthropic
+adapter against a mock transport (never against the real API); CI simulated locally from
+a fresh clone (never on GitHub); workflow static checks; metrics on known-answer synthetic
+traces.
+
+## PENDING
+
+| item | blocker | command |
 |---|---|---|
-| Dataset pinned | verified | 300 test instances; fresh download reproduces the evaluator-export SHA-256 |
-| Dataset license | **unverified** | no license tag on the dataset card |
-| Official evaluator CLI | executed locally on empty patches | 3 submitted, 3 `empty_patch`, 0 errors; no image pulled |
-| Run-summary parser | verified on a real artifact | unmodified harness summary committed as a test fixture |
-| `report.json` parser | verified against official grading code only | `get_eval_report` on synthetic logs: resolved, regression, not-fixed, apply-failure. **No container-produced report parsed yet** |
-| Anthropic adapter | verified with mocks only | real SDK on a mock transport; **never called against the API** |
-| CI workflow | simulated locally only | fresh clone: `uv sync --locked`, ruff, mypy, tests pass. **Never run on GitHub** |
-| Workflow security | statically tested | actions pinned to commit SHAs, `persist-credentials: false`, read-only permissions, no secrets, no `${{ }}` in shell, timeouts ≤ 120 min |
-| Local tests | passing | 101 passed, 0 skipped (with `eval` and `anthropic` extras); ruff and strict mypy clean |
+| Human evidence annotation (2 reviewers, then adjudication) | needs people | send `review_packages/reviewer_a/` and `review_packages/reviewer_b/` separately; then `codetrace annotate validate --check-files` and `codetrace annotate agreement` |
+| Live pilot, configuration A | needs authorization for paid API calls | `uv run codetrace run --config configs/pilot_anthropic.yaml --allow-paid` |
+| CI and harness workflow on GitHub | billing not verified; Actions disabled | see RESOURCES.md |
 
-## Phase 2 (offline) status
+## Limitations
 
-| step (PROTOCOL.md §11) | state | evidence |
-|---|---|---|
-| 1. Evidence-unit schema and storage | done | `codetrace.evidence`; isolation tests (agent-side modules never import evaluator-side ones; tools cannot reach `annotations/`) |
-| 2. Automatic edit sites | done | unit tests on synthetic diffs; the 3 pilot drafts were checked by hand against base-commit files (all three land exactly on the changed or bracketing lines) |
-| 3. Metrics | done | `codetrace.metrics`; 11 known-answer scenarios on traces from the real agent loop (resets, partial re-reads, same-turn views, failed edits, undefined cases, tau, macro aggregation) |
-| 4. Annotation guide and pilot labels | **partial** | guide (`docs/ANNOTATION_GUIDE.md`) and tooling done; `annotations/auto/` holds edit-site drafts only. **Support units need two human annotators; none have been labelled** |
-| 5 to 7 | not started | 5 needs approval for spend and the Docker gate |
-
-Protocol revision made before any model run: the patch-generation moment is the request
-whose response contained the first successful edit (PROTOCOL.md §3).
-
-Provisional pipeline check (not a result): `codetrace analyze --annotation-set auto
---allow-provisional` on `smoke_heuristic_v2` gives DR = 0 for all 3 runs (the scripted
-explorer never viewed a reference-fix location, in agreement with the earlier leakage
-audit), and CRR undefined (`no_patch`) for all 3.
-
-## Known limitations
-
-- The Docker gate (PROTOCOL.md §10) is unmet, so no outcome may be reported.
-- The adapter mocks cannot detect server-side rejection of request content. The first live
-  run is an engineering check.
-- Support-unit ground truth does not exist yet. Discovery recall computed now covers edit
-  sites only.
-- Actions pinned to existing majors (checkout v4, setup-uv v6, upload-artifact v4). Newer
-  majors exist; upgrading is a separate, tested change.
-- Local venv base is Anaconda CPython 3.12.2 (isolated). CI uses a uv-managed 3.12.
-- Unauthenticated Docker Hub pulls on the runner may be rate-limited and would surface as
-  harness errors.
+- Validation covers 3 small, single-hunk tasks from 3 repositories, under Rosetta
+  emulation. It shows the pipeline grades correctly here, not that every task image runs
+  correctly on Apple Silicon.
+- Negative controls test the applied-and-unresolved path only. Patch-apply failures and
+  in-container timeouts have been tested only through the official grading code on
+  synthetic logs.
+- Docker images were pulled by tag (`latest`); the image IDs above identify what was run.
+  A future pull could return a different image.
+- The assistant draft reflects one AI reading of the code and may anchor anyone who sees
+  it. Review packages exclude it; its value is as a comparison point after human review.
+- No agent has been evaluated; no research metric has been computed on model behavior.

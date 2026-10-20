@@ -308,6 +308,34 @@ def cmd_annotate_validate(args: argparse.Namespace) -> int:
     return 1 if bad else 0
 
 
+def cmd_annotate_package(args: argparse.Namespace) -> int:
+    from codetrace.annotation_package import build_package
+
+    tasks = load_tasks(_dataset_file(Path(args.dataset) if args.dataset else None, "test"))
+    autos = load_annotation_set(Path(args.annotations_dir), "auto")
+    ids = args.instance_ids or sorted(autos)
+    autos = {i: autos[i] for i in ids}
+    base_files: dict[str, dict[str, str]] = {}
+    for iid, auto in autos.items():
+        mirror = _mirror_for(tasks[iid].repo, auto.base_commit)
+        base_files[iid] = {
+            p: git("show", f"{auto.base_commit}:{p}", cwd=mirror).decode("utf-8", "replace")
+            for p in sorted({u.path for u in auto.units})
+        }
+    if len(set(args.reviewers)) != len(args.reviewers) or {
+        "auto",
+        "adjudicated",
+        "assistant_draft",
+    } & set(args.reviewers):
+        raise SystemExit("reviewer ids must be distinct and not a reserved set name")
+    for reviewer in args.reviewers:
+        root = build_package(
+            reviewer, autos, tasks, base_files, Path(args.docs_dir), Path(args.out)
+        )
+        print(f"wrote {root} ({len(autos)} tasks)")
+    return 0
+
+
 def cmd_annotate_agreement(args: argparse.Namespace) -> int:
     a, b = load_annotation(Path(args.a)), load_annotation(Path(args.b))
     if (a.instance_id, a.base_commit) != (b.instance_id, b.base_commit):
@@ -433,6 +461,14 @@ def main(argv: list[str] | None = None) -> int:
     av.add_argument("--check-files", action="store_true", help="verify paths/lines at base commit")
     av.add_argument("--repo", help="owner/name (default: derived from instance id)")
     av.set_defaults(func=cmd_annotate_validate)
+    ap_ = asub.add_parser("package", help="blinded review packages for human reviewers")
+    ap_.add_argument("--reviewers", nargs="+", default=["reviewer_a", "reviewer_b"])
+    ap_.add_argument("--instance-ids", nargs="+")
+    ap_.add_argument("--annotations-dir", default="annotations")
+    ap_.add_argument("--docs-dir", default="docs")
+    ap_.add_argument("--out", default="review_packages")
+    ap_.add_argument("--dataset")
+    ap_.set_defaults(func=cmd_annotate_package)
     ag = asub.add_parser("agreement", help="inter-annotator agreement for one task")
     ag.add_argument("a")
     ag.add_argument("b")

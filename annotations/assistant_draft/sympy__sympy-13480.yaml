@@ -1,0 +1,66 @@
+schema_version: 2
+instance_id: sympy__sympy-13480
+dataset_revision: b0dde1093fe417d83b7184254edf8199c1f0dff5
+base_commit: f57fe3f4b3f2cab225749e1b3b38ae1bf80b62f0
+annotation_set: assistant_draft
+annotator: claude-opus-5-5 (AI assistant)
+annotator_kind: assistant
+status: auto_draft
+notes:
+- Assistant draft for comparison only. Written by an AI assistant from reading the
+  issue, reference patch, and base-commit code. Not a human label; reviewers must
+  annotate independently before viewing it.
+external_dependencies: []
+units:
+- id: edit1
+  path: sympy/functions/elementary/hyperbolic.py
+  start_line: 590
+  end_line: 590
+  kind: edit_site
+  criticality: required
+  source: auto_patch
+  rationale: base-commit lines changed (or bracketing an insertion) by the reference
+    patch
+  role: edit_site
+  confidence: null
+  uncertainty: machine-derived; a human reviewer must confirm the range
+  depends_on: []
+- id: s1
+  path: sympy/functions/elementary/hyperbolic.py
+  start_line: 588
+  end_line: 589
+  kind: support
+  criticality: required
+  source: manual
+  rationale: Binds `cothm`, the name line 590 should use; `cotm` is undefined (NameError).
+  role: definition
+  confidence: high
+  uncertainty: Co-located with edit1, so its discovery is nearly implied by discovering
+    edit1.
+  depends_on:
+  - edit1
+- id: s2
+  path: sympy/functions/elementary/hyperbolic.py
+  start_line: 445
+  end_line: 452
+  kind: support
+  criticality: helpful
+  source: manual
+  rationale: tanh.eval has the same _peeloff_ipi block with consistent naming (tanhm),
+    confirming the intended form.
+  role: sibling_pattern
+  confidence: high
+  uncertainty: Confirms but is not needed for a one-token fix.
+  depends_on: []
+- id: s3
+  path: sympy/functions/elementary/hyperbolic.py
+  start_line: 37
+  end_line: 53
+  kind: support
+  criticality: helpful
+  source: manual
+  rationale: _peeloff_ipi docstring explains what m is.
+  role: documentation
+  confidence: low
+  uncertainty: Probably unnecessary for this fix.
+  depends_on: []

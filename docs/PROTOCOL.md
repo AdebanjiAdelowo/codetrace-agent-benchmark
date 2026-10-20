@@ -228,8 +228,22 @@ Verified so far:
 
 **Gate before any outcome is reported**: the known-answer bundle
 (`eval_bundles/harness_validation_v1`) must pass on the evaluation host, with gold 3/3
-resolved and the negative control 3/3 applied and unresolved with FAIL_TO_PASS failing.
-This has not run yet (STATUS.md, PENDING).
+resolved and the negative control 3/3 applied, unresolved, FAIL_TO_PASS failing, and no
+PASS_TO_PASS regression.
+
+**Gate status (2026-10-20): met on the local Apple Silicon host** (Docker Desktop, amd64
+images under Rosetta). 6/6 controls matched, confirmed against raw test logs by an
+independent cross-check (STATUS.md). The gate is host-specific: a different evaluation
+host (for example a GitHub-hosted runner) must pass it again before its outcomes are used.
+
+Rules adopted from the real reports:
+
+- The harness's advisory labels (`ambiguous_failure_ids`, `failure_reasons`) never change
+  an outcome category.
+- An evaluation failure (`error`, `incomplete`, infrastructure failure, missing report) is
+  reported separately and re-run, never counted as unresolved.
+- Tests failing outside both graded lists (pre-existing environment failures) do not
+  affect resolution, as in the official grader.
 
 ## 11. Phase 2 plan (context-loss instrumentation and ground truth)
 

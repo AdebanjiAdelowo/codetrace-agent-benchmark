@@ -56,7 +56,7 @@ def _ann(base: str, status: str = "adjudicated") -> TaskAnnotation:
     u = dict(path="calc/core.py", source="manual")
     return TaskAnnotation(
         instance_id="toy__calc-1", dataset_revision="r", base_commit=base,
-        annotation_set="adjudicated", annotator="test", status=status,  # type: ignore[arg-type]
+        annotation_set="adjudicated", annotator="test", annotator_kind="human", status=status,  # type: ignore[arg-type]
         units=[
             EvidenceUnit(id="E1", start_line=3, end_line=3, kind="edit_site", criticality="required", **u),  # type: ignore[arg-type]
             EvidenceUnit(id="E2", start_line=6, end_line=7, kind="support", criticality="required", **u),  # type: ignore[arg-type]

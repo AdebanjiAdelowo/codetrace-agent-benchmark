@@ -60,3 +60,25 @@ def test_shallow_commit_mirror_excludes_future(
     assert ensure_mirror(str(repo), tmp_path / "m", commits=[base]) == mirror
     ws = create_workspace(mirror, base, tmp_path / "ws")
     assert "return a - b" in (ws.path / "calc" / "core.py").read_text()
+
+
+def test_baseline_tracks_files_upstream_tracks_despite_gitignore(tmp_path: Path) -> None:
+    """Regression (found 2026-10-20 on pylint-dev__pylint-7080): upstream tracked a file
+    under a .gitignore'd directory; the baseline commit omitted it, so agent edits to it
+    would have been missing from the patch."""
+    up = tmp_path / "up"
+    (up / "keep").mkdir(parents=True)
+    (up / ".gitignore").write_text("keep/\n")
+    (up / "keep" / ".gitkeep").write_text("")
+    (up / "keep" / "data.txt").write_text("v1\n")
+    (up / "a.py").write_text("x = 1\n")
+    git("init", "--quiet", "-b", "main", cwd=up)
+    git("add", "-A", "--force", cwd=up)
+    git("commit", "--quiet", "-m", "base", cwd=up)
+    base = git("rev-parse", "HEAD", cwd=up).decode().strip()
+    mirror = ensure_mirror(str(up), tmp_path / "m", commits=[base])
+    ws = create_workspace(mirror, base, tmp_path / "ws")
+    upstream_tree = git("rev-parse", f"{base}^{{tree}}", cwd=mirror).decode().strip()
+    assert git("rev-parse", "HEAD^{tree}", cwd=ws.path).decode().strip() == upstream_tree
+    (ws.path / "keep" / "data.txt").write_text("v2\n")
+    assert "+v2" in ws.diff()

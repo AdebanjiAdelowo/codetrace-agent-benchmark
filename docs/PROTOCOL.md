@@ -54,9 +54,21 @@ All primary metrics use `E*_req`, the required units. Helpful units feed seconda
   segment, so `A_r(t)` is the set of spans viewed in the current segment. Configurations B
   and C add spans whose lines are reproduced verbatim in a ledger, compaction note, or
   retrieval result inside the current segment. Logged as `context_snapshot` events.
-- `t_edit`: the step of the **first successful edit** (`replace_in_file` / `create_file`
-  with no error). This is the primary "patch generation" moment. A secondary analysis uses the
-  snapshot before `submit`.
+- `t_edit`: the agent step whose **model response contained the first successful edit**
+  (`replace_in_file` / `create_file` with no error). This is the primary "patch generation"
+  moment. The model generated that edit having seen exactly the context of the request at
+  step `t_edit`, so:
+  - discovery before patching uses views at steps **strictly before** `t_edit`. Tool results
+    returned in the same response as the edit had not been seen by the model when it wrote
+    the edit;
+  - `A_r(t_edit)` is the `context_snapshot` with `reason = before_model_request` at step
+    `t_edit` (taken after any context reset at that step).
+
+  *Revision (2026-10-20, before any model run)*: an earlier draft used the snapshot logged
+  just before the edit tool executed. That snapshot can include results from tool calls
+  issued in the same response, which the model had not yet seen. The `before_<tool>`
+  snapshots remain in the trace for diagnostics. A secondary analysis uses the request
+  containing `submit`.
 
 A unit `e` **is covered** by a set of spans `S` if the lines of `e` covered by spans in `S`
 on the same path make up at least a fraction `tau` of `e`'s lines. Primary `tau = 0.5`;
@@ -68,15 +80,15 @@ Notation for run `r` on task `k`: `R = E*_req(k)`.
 
 ### 4.1 Discovery recall
 
-`DR_r = |{e in R : e covered by V_r(T)}| / |R|`
+`DR_r = |{e in R : e covered by spans viewed at steps < t_edit}| / |R|`
 
-- `T = t_edit` if the run made a successful edit, otherwise the last step of the run.
+- If the run made no successful edit, all views in the run count.
 - Denominator edge case: `|R| = 0` should not occur, because every task has at least one edit
   site. If it does, the task is excluded and reported as an annotation defect.
 
 ### 4.2 Conditional retention rate
 
-`D_r = {e in R : e covered by V_r(t_edit - )}` (discovered before the first edit)
+`D_r = {e in R : e covered by spans viewed at steps < t_edit}` (discovered before patching)
 
 `CRR_r = |{e in D_r : e covered by A_r(t_edit)}| / |D_r|`
 
@@ -92,7 +104,11 @@ Defined on the same runs as CRR.
 
 `CLR = mean over eligible runs of L_r` (the fraction of runs that lost at least one discovered
 required unit before patching). Unit-level loss `1 - CRR_r` is also reported. Every lost unit
-is attributed to the `context_compaction` event that removed it.
+is attributed to the latest `context_compaction` before `t_edit` whose removed spans cover it,
+or to none if no compaction explains the loss (reported as unattributed).
+
+Implementation: `codetrace.metrics`, validated on synthetic traces with hand-derived answers
+(`tests/test_metrics.py`).
 
 ### 4.4 Outcome and cost metrics
 
@@ -218,6 +234,9 @@ This has not run yet (STATUS.md, PENDING).
 ## 11. Phase 2 plan (context-loss instrumentation and ground truth)
 
 Each step ends with tests that run offline. Steps 1 to 4 need no model calls.
+Progress as of 2026-10-20: steps 1 to 3 implemented and tested. For step 4, the tooling and
+guide are done and only the automatic edit-site drafts exist; human annotation of support
+units is pending. Steps 5 to 7 have not started.
 
 1. **Evidence-unit schema and storage.** A Pydantic `EvidenceUnit` (§2.1) and per-task
    YAML files in an evaluator-side `annotations/` directory, with an isolation test that the

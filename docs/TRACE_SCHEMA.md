@@ -52,5 +52,6 @@ runs/<experiment_id>/
     <model>.<run_id>.json          # harness run summary (schema_version 2)
     logs/run_evaluation/<run_id>/<model>/<instance_id>/report.json
     results.jsonl                  # `codetrace collect-eval`: one checked row per task and run
+  analysis/                        # `codetrace analyze`: metrics_<set>_tau<t>.jsonl, summary_<set>_tau<t>.json
   runs/<run_id>/{trace.jsonl, patch.diff, result.json}
 ```

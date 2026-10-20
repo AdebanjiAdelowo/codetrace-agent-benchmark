@@ -53,9 +53,12 @@ src/codetrace/
   trace.py            trace schema, writer, validator
   evaluation.py       predictions file, official evaluator command, report parsing
   validation.py       known-answer checks of the official evaluator
+  evidence.py         evidence-unit annotations, edit-site extraction, agreement
+  metrics.py          discovery, retention, and context-loss metrics from traces
   models/             model interface, Anthropic adapter, offline scripted models
 configs/              experiment configurations
 eval_bundles/         prediction sets for evaluator validation
+annotations/          evidence annotations (evaluator side; never visible to agents)
 docs/                 methodology, metric definitions, protocol, resources
 schemas/              exported JSON schema for traces
 tests/                unit and integration tests (offline, CPU only)
@@ -99,6 +102,17 @@ uv run codetrace validate-harness --bundle eval_bundles/harness_validation_v1 \
     --out runs/harness_validation_v1
 ```
 
+Context-loss metrics need evidence annotations. Edit sites are derived automatically from
+the reference patch; support units are labelled by two annotators following
+[docs/ANNOTATION_GUIDE.md](docs/ANNOTATION_GUIDE.md).
+
+```bash
+uv run codetrace annotate init --instance-ids <ids>
+uv run codetrace annotate validate --check-files annotations/<set>/*.yaml
+uv run codetrace annotate agreement annotations/<a>/<id>.yaml annotations/<b>/<id>.yaml
+uv run codetrace analyze --experiment-dir runs/<experiment_id>   # adjudicated set, tau 0.5
+```
+
 Evaluation with Docker needs an x86_64 host and substantial disk space; see
 [docs/RESOURCES.md](docs/RESOURCES.md). A manually triggered GitHub Actions workflow runs
 the known-answer check on a hosted x86_64 runner.
@@ -108,6 +122,7 @@ the known-answer check on a hosted x86_64 runner.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): components and data flow
 - [docs/PROTOCOL.md](docs/PROTOCOL.md): experimental protocol and metric definitions
 - [docs/TRACE_SCHEMA.md](docs/TRACE_SCHEMA.md): trace event reference
+- [docs/ANNOTATION_GUIDE.md](docs/ANNOTATION_GUIDE.md): evidence annotation procedure
 - [docs/DATASET.md](docs/DATASET.md): dataset provenance, licensing, and task selection
 - [docs/RESOURCES.md](docs/RESOURCES.md): compute, disk, and cost requirements
 - [docs/STATUS.md](docs/STATUS.md): planned, executed, and verified results

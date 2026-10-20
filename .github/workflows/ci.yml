@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    # CPU only, no network access needed by tests, no API keys, no Docker.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.16"
+      - name: Install (dev + anthropic types; the heavy `eval` extra is not installed)
+        run: uv sync --locked --python 3.12 --group dev --extra anthropic
+      - name: Ruff
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Mypy (strict)
+        run: uv run mypy
+      - name: Tests
+        run: uv run pytest -q -rs
+      - name: Trace schema is up to date
+        run: |
+          uv run codetrace export-schema --out /tmp/trace.schema.json
+          diff -u schemas/trace.schema.json /tmp/trace.schema.json

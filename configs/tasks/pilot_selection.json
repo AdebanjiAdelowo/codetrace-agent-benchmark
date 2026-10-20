@@ -1,0 +1,62 @@
+{
+  "dataset": "SWE-bench/SWE-bench_Lite",
+  "revision": "b0dde1093fe417d83b7184254edf8199c1f0dff5",
+  "split": "test",
+  "n_available": 300,
+  "criteria": {
+    "repos": [
+      "psf/requests",
+      "pallets/flask",
+      "pytest-dev/pytest",
+      "sympy/sympy",
+      "pylint-dev/pylint"
+    ],
+    "max_files_changed": 1,
+    "max_hunks": 2,
+    "max_lines_changed": 12,
+    "max_fail_to_pass": 3,
+    "per_repo": 1,
+    "n_tasks": 3
+  },
+  "selected": [
+    {
+      "instance_id": "pytest-dev__pytest-11143",
+      "repo": "pytest-dev/pytest",
+      "version": "8.0",
+      "reference_patch_stats": {
+        "files_changed": 1,
+        "hunks": 1,
+        "lines_added": 1,
+        "lines_removed": 0
+      },
+      "n_fail_to_pass": 1,
+      "n_pass_to_pass": 114
+    },
+    {
+      "instance_id": "sympy__sympy-13480",
+      "repo": "sympy/sympy",
+      "version": "1.1",
+      "reference_patch_stats": {
+        "files_changed": 1,
+        "hunks": 1,
+        "lines_added": 1,
+        "lines_removed": 1
+      },
+      "n_fail_to_pass": 1,
+      "n_pass_to_pass": 43
+    },
+    {
+      "instance_id": "pylint-dev__pylint-7080",
+      "repo": "pylint-dev/pylint",
+      "version": "2.15",
+      "reference_patch_stats": {
+        "files_changed": 1,
+        "hunks": 1,
+        "lines_added": 1,
+        "lines_removed": 0
+      },
+      "n_fail_to_pass": 1,
+      "n_pass_to_pass": 120
+    }
+  ]
+}

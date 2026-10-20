@@ -1,0 +1,22 @@
+# Phase 1 live pilot: configuration A on the three pilot tasks, one seed.
+# STATUS: PLANNED, NOT RUN. Makes paid API calls; requires `--allow-paid`.
+# Estimated cost and resources: docs/RESOURCES.md.
+experiment_id: pilot_A_v1
+description: Live baseline pilot (configuration A), three tasks, seed 0.
+split: test
+instance_ids:
+  - pytest-dev__pytest-11143
+  - sympy__sympy-13480
+  - pylint-dev__pylint-7080
+agent_configs: [A_baseline]
+seeds: [0]
+model:
+  provider: anthropic
+  name: claude-opus-5-5
+  effort: high
+  max_tokens: 16000
+budget:
+  max_steps: 40
+  max_total_tokens: 1500000
+  max_wall_s: 1800
+  context_token_limit: 120000

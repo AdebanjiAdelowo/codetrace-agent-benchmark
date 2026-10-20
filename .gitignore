@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# Large or generated: repo mirrors, workspaces, run outputs, evaluator logs
+.codetrace_data/
+runs/
+logs/
+*.parquet
+.env
+.env.*

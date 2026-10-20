@@ -1,0 +1,19 @@
+# Pipeline smoke test. NO language model is called: the "heuristic" provider is a
+# deterministic scripted explorer (search identifiers from the issue, read around the
+# first hits, submit an empty patch). Its outputs have no research value; this run only
+# verifies dataset loading, sanitized workspaces, tools, tracing, and prediction export
+# on real SWE-bench Lite repositories.
+experiment_id: smoke_heuristic_v2
+description: Phase 1 end-to-end pipeline smoke test on the three pilot tasks.
+split: test
+instance_ids:
+  # From configs/tasks/pilot_selection.json (deterministic selection, see docs/DATASET.md)
+  - pytest-dev__pytest-11143
+  - sympy__sympy-13480
+  - pylint-dev__pylint-7080
+agent_configs: [A_baseline]
+seeds: [0]
+model:
+  provider: heuristic
+budget:
+  max_steps: 10

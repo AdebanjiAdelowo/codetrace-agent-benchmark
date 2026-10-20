@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -26,8 +27,12 @@ def test_workflow_invariants(path: Path) -> None:
         assert 0 < job["timeout-minutes"] <= 120, name
         for step in job["steps"]:
             uses = step.get("uses")
-            if uses:
-                assert "@" in uses and not uses.endswith("@main"), uses
+            if uses and uses.startswith("actions/checkout@"):
+                assert step["with"]["persist-credentials"] is False, "token must not persist"
+            if uses:  # third-party actions pinned to a full commit SHA
+                assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", uses), uses
+            # Expressions must not be interpolated into shell scripts (script injection).
+            assert "${{" not in step.get("run", ""), step.get("name")
 
 
 def test_expected_workflows_present() -> None:

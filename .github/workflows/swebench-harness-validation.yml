@@ -25,7 +25,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Disk before cleanup
         run: df -h / && docker system df
@@ -38,7 +40,7 @@ jobs:
           docker image prune -af > /dev/null
           df -h /
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           version: "0.11.16"
 
@@ -51,9 +53,11 @@ jobs:
       - name: Validate official evaluator against known answers
         env:
           HF_HUB_DISABLE_XET: "1"
+          # Passed through the environment, not interpolated into the script.
+          SKIP_DOCKER: ${{ inputs.skip_docker }}
         run: |
           args="--bundle eval_bundles/harness_validation_v1 --out runs/harness_validation_v1 --max-workers 1"
-          if [ "${{ inputs.skip_docker }}" = "true" ]; then args="$args --skip-docker"; fi
+          if [ "$SKIP_DOCKER" = "true" ]; then args="$args --skip-docker"; fi
           uv run codetrace validate-harness $args
 
       - name: Disk and images after
@@ -62,7 +66,7 @@ jobs:
 
       - name: Upload evaluator outputs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: harness_validation_v1
           # Reports, harness logs, and test output. The evaluator dataset export (which

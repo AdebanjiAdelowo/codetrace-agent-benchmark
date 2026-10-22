@@ -14,7 +14,8 @@ Apple Silicon (arm64), macOS 26.6.2, 11 CPU cores, 18 GB RAM, Docker 29.8.2 with
 | Smoke-run traces and outputs (3 runs) | about 160 KB |
 | Pinned SWE-bench Lite test split (parquet) | about 1 to 2 MB |
 
-The test suite and smoke run need no GPU, no Docker, and no API key. Test runtime is about 6 s.
+The test suite and smoke run need no GPU, no Docker, and no API key. The 2026-10-22
+full regression suite (178 tests, with both optional extras) ran in about 28 seconds.
 
 ## Official evaluation (SWE-bench harness)
 
@@ -81,19 +82,27 @@ they need no images (verified locally). Only non-empty patches need the images a
    `bash runs/<experiment>/evaluate.sh` with the `eval` extra installed (the script runs the
    harness inside the experiment's `evaluation/` directory).
 
-## Model API cost (*estimates*; nothing has been spent)
+## Proposed first live-pilot budget (not executed)
 
-Prices for `claude-opus-5-5` as listed on 2026-10-06: input $4 / MTok, output $20 / MTok, cache
-reads $0.20 / MTok, cache writes 1.25 times input. Prompt caching is on, and history is
-append-only within a segment.
+The current proposal is **one task, configuration A, one run, $5 estimated per-run and
+aggregate API allowance**, frozen in `experiments/pilot_A_pytest-11143_v2/`. This
+supersedes the earlier unexecuted three-task cost sketches.
 
-- Each run is hard-capped at 1.5 M processed tokens (all input components plus output) and
-  40 steps.
-- **Upper bound per run**: if every processed token were billed as uncached input, about $6,
-  plus output at $20 / MTok. With caching, most re-sent history is billed at the cache-read
-  price, so typical runs should cost a small fraction of the bound. This must be measured in
-  the pilot, not assumed.
-- **Pilot (3 tasks, configuration A, 1 seed)**: 3 runs. Upper bound of roughly $20 to $40.
-- **Full protocol (15 tasks, 3 configurations, 3 seeds = 135 runs, plus ablation replays)**:
-  extrapolate from measured pilot cost before approval. The worst case under current caps is
-  on the order of $1,000.
+For `claude-opus-5-5`, the frozen table records USD per million tokens: uncached input
+$4, output $20, five-minute cache writes $5, one-hour writes $8, and cache reads $0.20.
+These match the official [pricing page](https://platform.claude.com/docs/en/about-claude/pricing)
+when rechecked on 2026-10-22. The first-request local reservation is $0.417544.
+
+Before each request, acknowledged cost plus its conservative reservation must fit $5.
+Automatic retries are disabled and an exclusive local marker permits only one real
+attempt per frozen experiment directory. This is an estimated application limit, not
+a guaranteed invoice ceiling: unacknowledged requests and differences from estimated
+input size or base rates can produce additional charges.
+
+The 1.5M processed-token and 1,800-second budgets are checked between model requests,
+so an in-flight request can exceed them. Do not describe them as hard request-time
+limits. The 40-turn limit bounds the number of agent model requests.
+
+Read [LIVE_PILOT_READINESS.md](LIVE_PILOT_READINESS.md) for the decision, precise cache
+assumptions, prerequisites, pending Docker command, and remaining limitations. Larger
+experiments require a new cost estimate informed by a real pilot; none is authorized.

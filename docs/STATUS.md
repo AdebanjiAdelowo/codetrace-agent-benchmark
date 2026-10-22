@@ -5,6 +5,28 @@ tool, as given in the evidence column. **No language model has been called. No G
 Actions workflow has run.** Official SWE-bench Docker evaluation has been run locally
 for harness validation only (reference and negative-control patches, not agent output).
 
+## Readiness review (2026-10-22, after commit fc678c2)
+
+**178 tests pass**; Ruff lint/format and strict mypy pass (28 source files). The current
+runtime source and v2 freeze were preserved. Additional regression cases check actual
+configured-model accounting/reservations, price-table rejection, retry rejection,
+manifest fingerprints, independent cost-tampering detection and interrupted paid-restart
+blocking. No real model or evaluator was executed.
+
+A fresh offline simulation from the clean `fc678c2` commit is saved at
+`runs/pilot_A_pytest-11143_v2__sim__2547ba89/`. Its patch, usage, tool calls, viewed spans
+and context snapshots reproduce the saved v2 run. Both runs pass leakage and consistency
+audits. The fresh manifest has the correct clean commit and v2 fingerprint. All 98
+historical and 29 previously fingerprinted simulation artifacts remain unchanged.
+
+Audit logs: `runs/readiness_audit_2026-10-22_fc678c2/`. Decision and exact proposed
+experiment: [LIVE_PILOT_READINESS.md](LIVE_PILOT_READINESS.md). Read-only Docker inspection
+found the daemon socket absent; the live pilot would stop before any API call. Pricing
+was rechecked against official documentation without an authenticated API request.
+Repository privacy and disabled Actions were confirmed through read-only GitHub queries.
+The earlier offline milestone is already committed/pushed as `fc678c2`; this review adds
+tests and documentation, not new research outcomes.
+
 ## Phase 3: frozen pilot preparation (offline milestone verified, 2026-10-22)
 
 The single-task pilot safeguards and offline command are implemented. Configuration A

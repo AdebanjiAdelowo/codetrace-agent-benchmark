@@ -313,3 +313,43 @@ def test_concurrent_attempt_marker_stops_model_construction(
     monkeypatch.setattr("codetrace.pilot.docker_preflight", lambda *args: {})
     with pytest.raises(ValueError, match="already claimed"):
         run_pilot(config, runs, allow_paid=True)
+
+
+def test_interrupted_pilot_cannot_restart_paid_execution(
+    pilot_setup: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from codetrace.config import load_config
+    from codetrace.models.simulation import simulated_model
+
+    config, response, runs = pilot_setup
+    cfg = yaml.safe_load(config.read_text())
+    cfg["eval_image"] = "mock/image:latest"
+    config.write_text(yaml.safe_dump(cfg))
+    dataset = Path(cfg["dataset_path"])
+    record = json.loads(dataset.read_text())
+    record["image"] = cfg["eval_image"]
+    dataset.write_text(json.dumps(record))
+    write_freeze(config)
+    monkeypatch.setattr("codetrace.pilot.git_state", lambda: {"commit": "abc", "dirty": False})
+    monkeypatch.setattr("codetrace.pilot.docker_preflight", lambda *args: {"mocked": True})
+    attempts = []
+    model = simulated_model(load_config(config).model, response)
+
+    def interrupt(*args: Any, **kwargs: Any) -> Any:
+        attempts.append(1)
+        raise KeyboardInterrupt
+
+    model.complete = interrupt  # type: ignore[method-assign]
+    monkeypatch.setattr("codetrace.pilot.AnthropicModel", lambda **kwargs: model)
+    with pytest.raises(KeyboardInterrupt):
+        run_pilot(config, runs, allow_paid=True)
+    marker = config.parent / "REAL_ATTEMPT.json"
+    original = marker.read_bytes()
+    summary = json.loads(next(runs.glob("*/summary.json")).read_text())
+    assert summary["pipeline_status"] == "interrupted"
+    assert summary["run"]["exit_status"] == "interrupted"
+    assert not summary["run"]["billing_complete"]
+    assert summary["verified"]["run"]
+    with pytest.raises(ValueError, match="already claimed"):
+        run_pilot(config, runs.parent / "retry_output", allow_paid=True)
+    assert attempts == [1] and marker.read_bytes() == original

@@ -10,7 +10,7 @@ of unfinished pilot implementation work.
 - The pre-milestone base commit was `ba6c365`; use `git log -1` for the pilot milestone
   commit. The saved simulations record the dirty tree as it existed when executed;
   v2 freezes its exact source contents. Real pilots require a clean committed checkout.
-- **171 tests pass**, Ruff lint/format clean, strict mypy clean on 28 source files.
+- **178 tests pass**, Ruff lint/format clean, strict mypy clean on 28 source files.
   The project-specific `.venv` is approximately 403 MB; no dependency installation
   was needed. Default Python test sockets are blocked; no API requests were made.
 - Phase 1 and the prior official Docker validation (3 gold + 3 comment-only controls)
@@ -21,7 +21,18 @@ of unfinished pilot implementation work.
 - Phase 3 baseline pilot preparation is implemented and simulated. B/C agents are
   not yet implemented. No live model experiment or research finding exists.
 
-## Implemented in this continuation
+## Latest readiness review
+
+The offline milestone is committed and pushed as `fc678c2`. The later readiness review
+adds seven regression cases and a decision report in `LIVE_PILOT_READINESS.md`; runtime
+source and v2 fingerprints are unchanged. A fresh simulation from clean `fc678c2` is at
+`runs/pilot_A_pytest-11143_v2__sim__2547ba89/`; it reproduces the saved v2 patch, usage,
+tools and context spans. Audit logs are in `runs/readiness_audit_2026-10-22_fc678c2/`.
+All 98 historical and 29 earlier simulation artifact hashes still match. Read-only
+GitHub queries confirm privacy and disabled Actions. Docker inspection found the daemon
+socket absent; no daemon was started and no evaluator or real API call was run.
+
+## Implemented in the offline milestone
 
 1. `agent.py`: `Budget.max_cost_usd`, conservative pre-request reservation, response
    and cumulative costs, total result cost, billing completeness; populated tool and
@@ -102,8 +113,8 @@ shasum -a 256 -c artifacts/manifests/runs_2026-10-20.sha256
    scaling. The report, visualizations and BMW proposal remain future deliverables.
 
 Actions remains disabled as previously recorded; do not enable it without permission.
-Dataset licensing remains unverified (no card license tag). No current Docker daemon
-state is asserted: Docker was not started, stopped, queried, pulled, or pruned here.
+Dataset licensing remains unverified (no card license tag). The readiness review queried Docker read-only and found its daemon socket absent.
+Docker was not started, stopped, pulled, or pruned.
 At the 2026-10-22 resource check, 47 GiB disk was free and memory_pressure reported 36%
 free. Do not touch shared caches or other repositories.
 

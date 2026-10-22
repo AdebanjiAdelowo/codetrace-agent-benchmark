@@ -232,3 +232,162 @@ def test_interrupt_saves_partial_patch_and_reraises(
     assert verify_run(path)["verified"]
     with pytest.raises(ValueError, match="already finalized"):
         recover_run(path)
+
+
+def test_configured_model_controls_cost_accounting(
+    tmp_path: Path, ws: Workspace, task_record: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataclasses import replace
+
+    from codetrace.pricing import PRICES
+
+    name = "offline-configured-model"
+    prices = replace(
+        PRICES["claude-opus-5-5"],
+        model=name,
+        input=1,
+        output=5,
+        cache_read=0.1,
+        cache_write_5m=1.25,
+        cache_write_1h=2,
+    )
+    monkeypatch.setitem(PRICES, name, prices)
+    body = _message(
+        _call("submit"),
+        usage={
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "cache_read_input_tokens": 1000,
+            "cache_creation_input_tokens": 50,
+        },
+    )
+    body["model"] = name
+    api = MockAPI([(200, body)])
+    result = run_agent(
+        record_to_task(task_record).agent_view(),
+        ws,
+        api.model(model=name, max_tokens=100),
+        tmp_path,
+        experiment_id="configured",
+        budget=Budget(max_cost_usd=5),
+    )
+    # Unlabelled cache creation uses the configured model's higher 1h rate.
+    assert result.cost_usd == pytest.approx(0.00031)
+    manifest = read_trace(Path(result.trace_path))[0].payload["manifest"]
+    assert manifest["pricing"] == prices.as_dict() and manifest["model_name"] == name
+    assert verify_run(Path(result.trace_path).parent)["verified"]
+
+
+def test_configured_model_controls_pre_request_reservation(
+    tmp_path: Path, ws: Workspace, task_record: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataclasses import replace
+
+    from codetrace.pricing import PRICES
+
+    name = "offline-expensive-model"
+    monkeypatch.setitem(
+        PRICES,
+        name,
+        replace(
+            PRICES["claude-opus-5-5"],
+            model=name,
+            input=1000,
+            output=1000,
+            cache_write_5m=1000,
+            cache_write_1h=1000,
+        ),
+    )
+    api = MockAPI([])
+    result = run_agent(
+        record_to_task(task_record).agent_view(),
+        ws,
+        api.model(model=name, max_tokens=100),
+        tmp_path,
+        experiment_id="configured",
+        budget=Budget(max_cost_usd=1),
+    )
+    assert result.exit_status == "cost_budget" and result.steps == 0 and not api.requests
+
+
+@pytest.mark.parametrize(
+    "model_name,retries,message",
+    [
+        ("unknown-model", 0, "known model price table"),
+        ("claude-opus-5-5", 1, "max_retries=0"),
+    ],
+)
+def test_unpriced_models_and_retries_fail_before_request(
+    tmp_path: Path,
+    ws: Workspace,
+    task_record: dict[str, Any],
+    model_name: str,
+    retries: int,
+    message: str,
+) -> None:
+    api = MockAPI([])
+    with pytest.raises(ValueError, match=message):
+        run_agent(
+            record_to_task(task_record).agent_view(),
+            ws,
+            api.model(model=model_name, max_retries=retries),
+            tmp_path,
+            experiment_id="guard",
+            budget=Budget(max_cost_usd=5),
+        )
+    assert not api.requests
+
+
+def test_manifest_records_exact_commit_and_configuration_fingerprints(
+    tmp_path: Path, ws: Workspace, task_record: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hashlib
+    from dataclasses import asdict
+
+    from codetrace.agent import SYSTEM_PROMPT, TASK_TEMPLATE
+    from codetrace.tools import TOOL_SPECS
+
+    monkeypatch.setattr("codetrace.agent.codetrace_git_commit", lambda: "offline-test-commit")
+    budget = Budget(max_steps=3, max_cost_usd=5)
+    freeze = {"sha256": "offline-freeze", "mode": "offline_simulation"}
+    api = MockAPI([(200, _message(_call("submit")))])
+    result = run_agent(
+        record_to_task(task_record).agent_view(),
+        ws,
+        api.model(),
+        tmp_path,
+        experiment_id="fingerprints",
+        budget=budget,
+        freeze=freeze,
+    )
+    manifest = read_trace(Path(result.trace_path))[0].payload["manifest"]
+    assert manifest["codetrace_git_commit"] == "offline-test-commit"
+    assert manifest["budget"] == asdict(budget) and manifest["freeze"] == freeze
+    assert manifest["system_prompt_sha256"] == hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()
+    assert manifest["task_template_sha256"] == hashlib.sha256(TASK_TEMPLATE.encode()).hexdigest()
+    assert (
+        manifest["tool_specs_sha256"]
+        == hashlib.sha256(json.dumps(TOOL_SPECS, sort_keys=True).encode()).hexdigest()
+    )
+
+
+def test_independent_verifier_rejects_response_cost_tampering(
+    tmp_path: Path, ws: Workspace, task_record: dict[str, Any]
+) -> None:
+    api = MockAPI([(200, _message(_call("submit")))])
+    result = run_agent(
+        record_to_task(task_record).agent_view(),
+        ws,
+        api.model(),
+        tmp_path,
+        experiment_id="cost_audit",
+        budget=Budget(max_cost_usd=5),
+    )
+    trace = Path(result.trace_path)
+    rows = [json.loads(line) for line in trace.read_text().splitlines()]
+    response = next(row for row in rows if row["kind"] == "model_response")
+    response["payload"]["cost_usd"] = 999
+    trace.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    report = verify_run(trace.parent)
+    assert not report["verified"]
+    assert any("cost_usd differs" in p for p in report["problems"])

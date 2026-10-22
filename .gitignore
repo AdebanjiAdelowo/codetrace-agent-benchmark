@@ -13,3 +13,6 @@ logs/
 .env.*
 # Reviewer packages contain benchmark issue text, reference patches, and hidden tests
 review_packages/
+
+# Durable local one-attempt guard; never clear automatically or publish user paths.
+experiments/**/REAL_ATTEMPT.json

@@ -56,6 +56,10 @@ src/codetrace/
   evidence.py         evidence-unit annotations, edit-site extraction, agreement
   metrics.py          discovery, retention, and context-loss metrics from traces
   annotation_package.py  blinded review packages for human annotators
+  pricing.py          versioned token pricing and request cost reservations
+  freeze.py           frozen single-run experiment configuration
+  pilot.py            simulation and official-evaluation orchestration
+  verify.py           independent run verification and aborted-trace recovery
   models/             model interface, Anthropic adapter, offline scripted models
 configs/              experiment configurations
 eval_bundles/         prediction sets for evaluator validation
@@ -128,6 +132,7 @@ the known-answer check on a hosted x86_64 runner.
 - [docs/REVIEWER_INSTRUCTIONS.md](docs/REVIEWER_INSTRUCTIONS.md): instructions sent to human reviewers
 - [docs/DATASET.md](docs/DATASET.md): dataset provenance, licensing, and task selection
 - [docs/RESOURCES.md](docs/RESOURCES.md): compute, disk, and cost requirements
+- [docs/PILOT.md](docs/PILOT.md): frozen pilot, offline simulation, cost controls, and recovery
 - [docs/STATUS.md](docs/STATUS.md): planned, executed, and verified results
 
 ## Scope

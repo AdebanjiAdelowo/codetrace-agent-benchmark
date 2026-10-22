@@ -10,9 +10,10 @@ span that left the accessible context. Hence, at any step, the code spans in the
 agent's accessible context are exactly those viewed in the current segment
 (plus anything restated in the compaction note, which is recorded verbatim).
 
-Exit statuses: submitted | max_steps | token_budget | wall_time | refusal |
-no_tool_calls | error. The workspace diff is written as the patch in every case
-and the exit status is reported next to it.
+Exit statuses: submitted | max_steps | token_budget | cost_budget | wall_time | refusal |
+no_tool_calls | model_context_window_exceeded | interrupted | error.
+The workspace diff is written as the patch in every case and the exit status is
+reported next to it.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from typing import Any
 from codetrace.dataset import DATASET_NAME, DATASET_REVISION, AgentTaskView
 from codetrace.env_info import codetrace_git_commit, environment_info
 from codetrace.models.base import ModelClient
+from codetrace.pricing import estimate_request_tokens, price_table, projected_call_cost, usage_cost
 from codetrace.tools import TOOL_NAMES, TOOL_SPECS, RepoTools
 from codetrace.trace import (
     CodeSpan,
@@ -67,6 +69,11 @@ class Budget:
     max_wall_s: float = 1800.0
     context_token_limit: int = 120_000  # triggers a logged context reset
     max_no_tool_nudges: int = 2
+    max_cost_usd: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.max_cost_usd is not None and self.max_cost_usd <= 0:
+            raise ValueError("max_cost_usd must be positive")
 
 
 @dataclass
@@ -83,6 +90,8 @@ class RunResult:
     patch_bytes: int
     files_modified: list[str] = field(default_factory=list)
     n_compactions: int = 0
+    cost_usd: float | None = None
+    billing_complete: bool = True
 
 
 def _sha256(s: str) -> str:
@@ -114,6 +123,7 @@ def run_agent(
     seed: int = 0,
     budget: Budget | None = None,
     run_id: str | None = None,
+    freeze: dict[str, Any] | None = None,
 ) -> RunResult:
     if not isinstance(task, AgentTaskView):  # information-hiding guard
         raise TypeError("run_agent only accepts an AgentTaskView")
@@ -123,6 +133,15 @@ def run_agent(
     trace_path = run_dir / "trace.jsonl"
     patch_path = run_dir / "patch.diff"
     tools = RepoTools(workspace.path)
+    prices = price_table(model.info.name) if model.info.provider == "anthropic" else None
+    if budget.max_cost_usd is not None and prices is None:
+        raise ValueError("cost-capped runs require a known model price table")
+    if budget.max_cost_usd is not None and model.info.params.get("max_retries", 0) != 0:
+        raise ValueError("cost-capped runs require max_retries=0 to avoid ambiguous retry charges")
+    cost = 0.0 if prices else None
+    billing_complete = True
+    interrupted = False
+    request_pending = False
 
     manifest = RunManifest(
         run_id=run_id,
@@ -144,6 +163,11 @@ def run_agent(
         environment=environment_info(),
         codetrace_git_commit=codetrace_git_commit(),
         started_at=utc_now(),
+        tool_specs_sha256=_sha256(json.dumps(TOOL_SPECS, sort_keys=True)),
+        task_template_sha256=_sha256(TASK_TEMPLATE),
+        workspace_path=str(workspace.path.resolve()),
+        pricing=prices.as_dict() if prices else None,
+        freeze=freeze,
     )
 
     task_prompt = TASK_TEMPLATE.format(repo=task.repo, problem_statement=task.problem_statement)
@@ -196,6 +220,24 @@ def run_agent(
                     context_spans = []
                     messages = [{"role": "user", "content": task_prompt + "\n\n" + note}]
 
+                if budget.max_cost_usd is not None and prices is not None:
+                    projected = projected_call_cost(
+                        estimate_request_tokens(SYSTEM_PROMPT, messages, TOOL_SPECS),
+                        int(model.info.params["max_tokens"]),
+                        prices,
+                    )
+                    if (cost or 0.0) + projected > budget.max_cost_usd:
+                        exit_status = "cost_budget"
+                        tw.emit(
+                            EventKind.BUDGET_EXHAUSTED,
+                            step,
+                            budget="max_cost_usd",
+                            spent_usd=cost,
+                            projected_call_usd=projected,
+                            cap_usd=budget.max_cost_usd,
+                        )
+                        break
+
                 step += 1
                 tw.emit(
                     EventKind.CONTEXT_SNAPSHOT,
@@ -213,7 +255,12 @@ def run_agent(
                     # Only the newest message is logged; earlier ones are already in the trace.
                     new_message=messages[-1],
                 )
+                request_pending = True
                 resp = model.complete(SYSTEM_PROMPT, messages, TOOL_SPECS)
+                request_pending = False
+                call_cost = usage_cost(resp.usage, prices) if prices else None
+                if call_cost is not None:
+                    cost = (cost or 0.0) + call_cost
                 total = total + resp.usage
                 last_input_tokens = (
                     resp.usage.input_tokens
@@ -230,8 +277,15 @@ def run_agent(
                     latency_s=round(resp.latency_s, 3),
                     request_id=resp.request_id,
                     content=resp.content,
+                    cost_usd=call_cost,
+                    cumulative_cost_usd=cost,
+                    billing_meta=resp.meta,
                 )
                 messages.append({"role": "assistant", "content": resp.content})
+
+                if resp.stop_reason == "model_context_window_exceeded":
+                    exit_status = "model_context_window_exceeded"
+                    break
 
                 if resp.stop_reason == "refusal":
                     exit_status = "refusal"
@@ -266,6 +320,28 @@ def run_agent(
                         name=call.name,
                         input=call.input,
                     )
+                    if resp.stop_reason == "max_tokens":
+                        text = "not executed: truncated model response"
+                        tw.emit(
+                            EventKind.TOOL_RESULT,
+                            step,
+                            tool_use_id=call.id,
+                            name=call.name,
+                            is_error=True,
+                            output=text,
+                            output_sha256=_sha256(text),
+                            duration_s=0,
+                            files_modified=[],
+                        )
+                        results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": call.id,
+                                "content": text,
+                                "is_error": True,
+                            }
+                        )
+                        continue
                     tc0 = time.monotonic()
                     out = tools.call(call.name, call.input)
                     tw.emit(
@@ -303,8 +379,19 @@ def run_agent(
                 if submitted:
                     exit_status = "submitted"
                     break
+        except KeyboardInterrupt:
+            exit_status = "interrupted"
+            interrupted = True
+            billing_complete = not request_pending
+            tw.emit(
+                EventKind.ERROR,
+                step,
+                error_type="KeyboardInterrupt",
+                message="interrupted; pending request billing may be unknown",
+            )
         except Exception as exc:  # recorded, not swallowed silently
             exit_status = "error"
+            billing_complete = not request_pending
             tw.emit(EventKind.ERROR, step, error_type=type(exc).__name__, message=str(exc))
 
         patch = workspace.diff()
@@ -331,8 +418,12 @@ def run_agent(
             patch_bytes=len(patch.encode("utf-8")),
             files_modified=sorted(set(files_modified)),
             n_compactions=n_compactions,
+            cost_usd=cost,
+            billing_complete=billing_complete,
         )
         tw.emit(EventKind.RUN_END, step, result=asdict(result), finished_at=utc_now())
 
     (run_dir / "result.json").write_text(json.dumps(asdict(result), indent=2) + "\n")
+    if interrupted:
+        raise KeyboardInterrupt
     return result

@@ -33,12 +33,17 @@ def test_usage_cost_prices_each_component() -> None:
     assert usage_cost(u, p) == pytest.approx(37.2)
 
 
-def test_projection_is_an_upper_bound() -> None:
+def test_projection_reserves_highest_rate_for_supplied_estimate() -> None:
     p = price_table("claude-opus-5-5")
     assert p is not None
     msgs = [{"role": "user", "content": "x" * 4000}]
     est = estimate_request_tokens("s" * 1000, msgs, [])
-    assert est >= (1000 + 4000) // 2
+    assert est >= 1000 + 4000 + 4096
     worst = projected_call_cost(est, 16000, p)
     actual = usage_cost(TokenUsage(input_tokens=est, output_tokens=16000), p)
     assert worst >= actual
+
+
+def test_estimate_handles_multibyte_and_low_compression_input() -> None:
+    messages = [{"role": "user", "content": "🧪漢字" * 100}]
+    assert estimate_request_tokens("", messages, []) > 4096 + 1000

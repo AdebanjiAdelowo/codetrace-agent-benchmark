@@ -95,6 +95,7 @@ def _make_model(cfg: ExperimentConfig, problem_statement: str, allow_paid: bool)
         model=cfg.model.name or DEFAULT_MODEL,
         max_tokens=cfg.model.max_tokens,
         effort=cfg.model.effort,
+        max_retries=0 if cfg.budget.max_cost_usd is not None else 2,
     )
 
 
@@ -403,9 +404,68 @@ def cmd_export_schema(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_freeze(args: argparse.Namespace) -> int:
+    from codetrace.freeze import check_freeze, write_freeze
+
+    fn = check_freeze if args.check else write_freeze
+    print(json.dumps(fn(Path(args.config)), indent=2))
+    return 0
+
+
+def cmd_verify_run(args: argparse.Namespace) -> int:
+    from codetrace.verify import recover_run, verify_run
+
+    if args.command == "recover-run":
+        report = recover_run(Path(args.run_dir))
+        print(json.dumps(report, indent=2))
+        return 0
+    report = verify_run(Path(args.run_dir))
+    print(json.dumps(report, indent=2))
+    return 0 if report["verified"] else 1
+
+
+def cmd_pilot(args: argparse.Namespace) -> int:
+    from codetrace.pilot import run_pilot
+
+    result = run_pilot(
+        Path(args.config),
+        Path(args.runs_dir),
+        simulation=Path(args.simulate) if args.simulate else None,
+        allow_paid=args.allow_paid,
+        evaluate_docker=args.evaluate_docker,
+    )
+    print(json.dumps(result, indent=2))
+    return (
+        0
+        if result["verified"]["run"]
+        and (result["evaluation_status"] == "PENDING" or result["verified"]["evaluation"])
+        else 1
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="codetrace")
     sub = p.add_subparsers(dest="command", required=True)
+
+    f = sub.add_parser("freeze", help="freeze or verify a single-run pilot protocol")
+    f.add_argument("--config", required=True)
+    f.add_argument("--check", action="store_true")
+    f.set_defaults(func=cmd_freeze)
+    for command in ("verify-run", "recover-run"):
+        vrun = sub.add_parser(command, help="independent consistency check / aborted-run report")
+        vrun.add_argument("--run-dir", required=True)
+        vrun.set_defaults(func=cmd_verify_run)
+    pilot = sub.add_parser("pilot", help="execute a frozen single-run pilot")
+    pilot.add_argument("--config", required=True)
+    pilot.add_argument("--runs-dir", default="runs")
+    pilot.add_argument("--simulate", help="canned HTTP responses; no network or API spend")
+    pilot.add_argument("--allow-paid", action="store_true")
+    pilot.add_argument(
+        "--evaluate-docker",
+        action="store_true",
+        help="also evaluate simulated output using an already running Docker daemon",
+    )
+    pilot.set_defaults(func=cmd_pilot)
 
     s = sub.add_parser("select-tasks", help="deterministic pilot task selection")
     s.add_argument("--dataset", help="local parquet/jsonl; default downloads the pinned revision")

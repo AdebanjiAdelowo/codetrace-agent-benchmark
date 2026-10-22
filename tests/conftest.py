@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socket
 from pathlib import Path
 from typing import Any
 
@@ -78,3 +79,17 @@ def dataset_jsonl(tmp_path: Path, task_record: dict[str, Any]) -> Path:
     p = tmp_path / "dataset.jsonl"
     p.write_text(json.dumps(task_record) + "\n")
     return p
+
+
+@pytest.fixture(autouse=True)
+def block_network(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The default test suite must fail immediately if Python tries to open a socket."""
+    if request.node.get_closest_marker("network"):
+        return
+
+    def blocked(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("network access forbidden in offline tests")
+
+    monkeypatch.setattr(socket.socket, "connect", blocked)
+    monkeypatch.setattr(socket.socket, "connect_ex", blocked)
+    monkeypatch.setattr(socket, "create_connection", blocked)

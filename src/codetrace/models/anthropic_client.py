@@ -1,6 +1,6 @@
 """Anthropic Messages API adapter (manual tool-use loop; the loop lives in agent.py).
 
-Not exercised by tests or the smoke run: it makes paid API calls. Requires the
+Tested offline through a mock HTTP transport. Live execution requires the
 ``anthropic`` extra and a credential resolved by the SDK (``ANTHROPIC_API_KEY``
 or an ``ant auth login`` profile).
 
@@ -61,6 +61,9 @@ class AnthropicModel:
                 "max_retries": max_retries,
             },
         )
+
+    def close(self) -> None:
+        self._client.close()
 
     def complete(
         self, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]

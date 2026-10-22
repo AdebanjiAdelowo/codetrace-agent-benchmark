@@ -30,6 +30,7 @@ class BudgetConfig(BaseModel):
     max_wall_s: float = 1800.0
     context_token_limit: int = 120_000
     max_no_tool_nudges: int = 2
+    max_cost_usd: float | None = Field(default=None, gt=0)
 
     def to_budget(self) -> Budget:
         return Budget(**self.model_dump())
@@ -48,6 +49,8 @@ class ExperimentConfig(BaseModel):
     budget: BudgetConfig = BudgetConfig()
     # Optional local dataset file (parquet/jsonl); otherwise downloaded at the pinned revision.
     dataset_path: Path | None = None
+    eval_image: str | None = None
+    eval_image_id: str | None = None
     # Optional directory of local repo sources named <owner>__<name> (offline runs, tests);
     # otherwise repositories are cloned from GitHub.
     repo_source_dir: Path | None = None

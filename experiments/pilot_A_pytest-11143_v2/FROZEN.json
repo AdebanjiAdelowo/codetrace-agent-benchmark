@@ -1,0 +1,89 @@
+{
+  "payload": {
+    "anthropic_sdk_version": "1.15.0",
+    "config": {
+      "agent_configs": [
+        "A_baseline"
+      ],
+      "budget": {
+        "context_token_limit": 120000,
+        "max_cost_usd": 5.0,
+        "max_no_tool_nudges": 2,
+        "max_steps": 40,
+        "max_total_tokens": 1500000,
+        "max_wall_s": 1800.0
+      },
+      "dataset_path": null,
+      "description": "Single-task baseline pilot; validate with offline simulation before paid authorization.",
+      "eval_image": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-11143:latest",
+      "eval_image_id": "sha256:e08ce142adec5ec985e867e910045734ec3c58fe174fc054c5f83855bed78fd4",
+      "experiment_id": "pilot_A_pytest-11143_v2",
+      "instance_ids": [
+        "pytest-dev__pytest-11143"
+      ],
+      "model": {
+        "effort": "high",
+        "max_tokens": 16000,
+        "name": "claude-opus-5-5",
+        "provider": "anthropic"
+      },
+      "repo_source_dir": null,
+      "seeds": [
+        0
+      ],
+      "split": "test"
+    },
+    "dataset": "SWE-bench/SWE-bench_Lite",
+    "dataset_revision": "b0dde1093fe417d83b7184254edf8199c1f0dff5",
+    "evaluator": "swebench==5.0.2",
+    "format": 1,
+    "image": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-11143:latest",
+    "image_id": "sha256:e08ce142adec5ec985e867e910045734ec3c58fe174fc054c5f83855bed78fd4",
+    "pricing": {
+      "cache_read": 0.2,
+      "cache_write_1h": 8.0,
+      "cache_write_5m": 5.0,
+      "input": 4.0,
+      "model": "claude-opus-5-5",
+      "output": 20.0,
+      "retrieved": "2026-10-20",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing"
+    },
+    "sources": {
+      "docs/PROTOCOL.md": "7bab34d68b921bf1178db41e1a6e0883e8773fb773eb8df6f15db428baf49504",
+      "pyproject.toml": "3204017200cdc130a3c64f30b878702dacf27067a87945f313452b7f6282eff6",
+      "src/codetrace/__init__.py": "933b089f5b260bf7b763efdf181f0011821a7ce0483fb88d2070c72ddec0952e",
+      "src/codetrace/agent.py": "91bd4e28034d1c7fb526c5d8beca616675b25f320932534290c8e3891aadebfc",
+      "src/codetrace/annotation_package.py": "b686b6d97a4a2a539f8f5aa2b80c0243a1f57e841d1b6f781da10f4a08e2f602",
+      "src/codetrace/cli.py": "60121c503e3d254bd9780499c9460a071351142db920504f77766e97b94d2dda",
+      "src/codetrace/config.py": "45f866548603eb57ca60b066295802d14eaeebf5e3880ed0c2efc16a69c27a01",
+      "src/codetrace/crosscheck.py": "002ce9a1eb3148693857460a8e4095a098e0f2062ecf34733c350e9823847f62",
+      "src/codetrace/dataset.py": "b1f4d846a453139a66cfbda0d80184e7c73714ed2b2bdd18c34a1c3aea892742",
+      "src/codetrace/env_info.py": "4ae81d247a3853b04892a818f2b473d8dd75ed41782dbecee642519f8022943e",
+      "src/codetrace/evaluation.py": "f92da97e55227241fcdd4b119e2fb98163e595122ea5e244d98d25345460cb32",
+      "src/codetrace/evidence.py": "2485a710a654e92c2e995608e242656611da5e6488a4a1555e4b9aecc9fc6a7e",
+      "src/codetrace/freeze.py": "2a225fa27f6af424d6b852dc3fd35bc4bbd8853dd4540bc422f1ce0a79be2247",
+      "src/codetrace/metrics.py": "5822f4af80eca639468ea742180fd545cfcdb43bb620836aaa2303cfe46f9572",
+      "src/codetrace/models/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/codetrace/models/anthropic_client.py": "7701e0eee55f1ef3bbb5b6b2b523c2126e1d5d23773ad343de9412619ad1deb2",
+      "src/codetrace/models/base.py": "cb329a1ff3348033e2a84d5d60b138da3cf838e590a31406817fff9f51351851",
+      "src/codetrace/models/scripted.py": "80905f4352882c63a601d9fb23756f00676d0693d3e43cb7daeace7f5ad24808",
+      "src/codetrace/models/simulation.py": "39698a2c85392e93a4031baa5f2cfb5305b1971f56d64e96e38cedaef2a52f02",
+      "src/codetrace/netfix.py": "bee0b10cc6e436005fbe18c92a315b7fdc052bd270cdcba65a81a37d48f2d6b9",
+      "src/codetrace/pilot.py": "bb68bfe23649672e6bb9cb8a75925d74a4500ad8de61f3ee560d67ba68be699f",
+      "src/codetrace/pricing.py": "94d2a838a9ddd9b54d2e2f9e5ff2a58e4a6516f0403c284b3051a3475c134a46",
+      "src/codetrace/tools.py": "1ba34ed22b8869579634867a6a1b1701dcfa68ea57d3368b1e37e002d46461d3",
+      "src/codetrace/trace.py": "6e4ec31ae7a69dbfd9248951e90544ff2bc859c25513ee9ceef94890ff4afb7c",
+      "src/codetrace/validation.py": "05652737528e8444e328b230bd58701a951d3a74ac9e879b609a487c62956d59",
+      "src/codetrace/verify.py": "f0021d20121d620f8097c3ae3ac9429b752c557a22f9c137ee33774078d35906",
+      "src/codetrace/workspace.py": "6348e334ac9f7cacef2e699b205820f87ac26a75afb67765aae88d484d714d64",
+      "uv.lock": "cece8e266a79f76194ca7189cf5058822344987b22c23331148bd71faa4b36f6"
+    },
+    "system_prompt_sha256": "7fdf37f3fdd3738facfad540b5d4b2d72106f6f1cd1607a53a52f1c9a363724e",
+    "task_record_sha256": "9e395997339f2594869ab0cbb4b8062ac360c8e5cb96022c889e48e12f537d8b",
+    "task_template_sha256": "289bda3c54edd9039232393abd71a50a227ab9ef5f1435846c93f8abb5d6375e",
+    "tool_specs_sha256": "fefaa9c64f8b9f8c0c7eeb925151367189912885147bba4c37aa7ba037bf0dcf",
+    "total_cost_cap_usd": 5.0
+  },
+  "sha256": "e94b258de7d6acd05155038408c381fc0f895c993a245edd02b2186397d5b83f"
+}

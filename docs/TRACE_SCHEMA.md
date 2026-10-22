@@ -25,7 +25,7 @@ The machine-readable schema is in [`schemas/trace.schema.json`](../schemas/trace
 | `code_location_viewed` | `tool_use_id`, `source_tool`, `segment`, `span` (`path`, `start_line`, `end_line`) |
 | `context_compaction` | `strategy`, `trigger_input_tokens`, `from_segment`, `to_segment`, `removed_spans`, `removed_messages`, `note` (verbatim text carried into the new segment) |
 | `retrieval` | reserved for configuration C |
-| `budget_exhausted` | `budget` (`max_steps`, `max_total_tokens`, `max_wall_s`) |
+| `budget_exhausted` | `budget` (`max_steps`, `max_total_tokens`, `max_wall_s`, `max_cost_usd`) |
 | `error` | `error_type`, `message` |
 | `patch_generated` | `patch`, `patch_sha256`, `patch_bytes`, `files_modified` |
 | `run_end` | `result` (`RunResult`: exit status, steps, summed usage, wall time, paths, modified files, number of compactions), `finished_at` |
@@ -35,7 +35,8 @@ offline scripted models. Approximate counts must never be reported as model cost
 
 ## Exit statuses
 
-`submitted`, `max_steps`, `token_budget`, `wall_time`, `refusal`, `no_tool_calls`, `error`.
+`submitted`, `max_steps`, `token_budget`, `cost_budget`, `wall_time`, `refusal`,
+`no_tool_calls`, `model_context_window_exceeded`, `interrupted`, `error`.
 A patch is written in every case. A trace without `run_end` is an aborted run and is reported
 as such.
 
@@ -55,3 +56,20 @@ runs/<experiment_id>/
   analysis/                        # `codetrace analyze`: metrics_<set>_tau<t>.jsonl, summary_<set>_tau<t>.json
   runs/<run_id>/{trace.jsonl, patch.diff, result.json}
 ```
+
+
+## Pilot accounting (schema 0.2.0)
+
+New runs populate `tool_specs_sha256`, `task_template_sha256`, `workspace_path`, and
+`pricing` in the run manifest. Frozen pilot runs additionally record `freeze.sha256` and
+`freeze.mode`. Each `model_response` carries `cost_usd`, `cumulative_cost_usd`, and
+`billing_meta`; `run_end.result` carries `cost_usd` and `billing_complete`.
+Costs are null for unpriced scripted providers. Simulation uses fixture token counts,
+so its computed costs are hypothetical and `summary.json` identifies zero actual API
+spend. `TokenUsage` includes separate cache-write TTL counts, which are subsets of the
+aggregate cache-creation count and must not be counted twice.
+
+`max_tokens` responses have their tool calls logged but answered with error results;
+no tool is executed. A context-window-exceeded response is terminal. Interrupts try to
+finalize a partial patch, write an interrupted `run_end`, and re-raise. See [PILOT.md](PILOT.md)
+for independent verification and recovery of killed processes.

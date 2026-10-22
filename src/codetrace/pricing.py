@@ -7,23 +7,22 @@ Accounting (``usage_cost``) prices each usage component separately. Cache writes
 priced by their reported TTL; any cache-write tokens without a TTL breakdown are priced
 at the 1-hour rate (the higher one), so the estimate never undercounts.
 
-Projection (``projected_call_cost``) is a conservative upper bound used *before* a request
+Projection (``projected_call_cost``) is a conservative reservation used *before* a request
 to enforce a spending cap: every input token is assumed to be billed at the highest input
-rate, the request size is estimated at ``CHARS_PER_TOKEN_LOWER_BOUND`` characters per
-token (real code and English average 3 to 4), and the full ``max_tokens`` of output is
-assumed.
+rate, one token per UTF-8 byte of serialized content plus 4096 tokens of framing
+allowance, and the full ``max_tokens`` of output. This is an estimate, not a provider
+tokenizer guarantee or an invoice ceiling. Unacknowledged requests can incur charges.
 """
 
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import asdict, dataclass
 from typing import Any
 
 from codetrace.trace import TokenUsage
 
-CHARS_PER_TOKEN_LOWER_BOUND = 2.0
+FRAMING_TOKEN_ALLOWANCE = 4096
 
 
 @dataclass(frozen=True)
@@ -80,15 +79,15 @@ def usage_cost(usage: TokenUsage, prices: PriceTable) -> float:
 def estimate_request_tokens(
     system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
 ) -> int:
-    """Conservative (high) token estimate for a request's full input."""
-    chars = len(system) + len(json.dumps(messages, default=str)) + len(json.dumps(tools))
-    return math.ceil(chars / CHARS_PER_TOKEN_LOWER_BOUND)
+    """High local estimate; includes byte-level tokenization and protocol allowance."""
+    content = system + json.dumps(messages, default=str) + json.dumps(tools)
+    return len(content.encode("utf-8")) + FRAMING_TOKEN_ALLOWANCE
 
 
 def projected_call_cost(
     input_tokens_upper: int, max_output_tokens: int, prices: PriceTable
 ) -> float:
-    """Upper bound on one request's cost (see module docstring)."""
+    """Worst-rate reservation for the supplied token estimate (see module docstring)."""
     return (
         input_tokens_upper * prices.max_input_rate + max_output_tokens * prices.output
     ) / 1_000_000

@@ -1,15 +1,41 @@
 # Status: Planned, Executed, Verified
 
-Last updated: 2026-10-20. "Verified" means checked against an artifact or an independent
+Last updated: 2026-10-22. "Verified" means checked against an artifact or an independent
 tool, as given in the evidence column. **No language model has been called. No GitHub
 Actions workflow has run.** Official SWE-bench Docker evaluation has been run locally
 for harness validation only (reference and negative-control patches, not agent output).
 
-## Phase 3 (in progress)
+## Phase 3: frozen pilot preparation (offline milestone verified, 2026-10-22)
 
-Pricing module, trace schema 0.2.0, and adapter TTL/billing metadata are implemented and
-tested offline. Cost-cap enforcement, frozen pilot manifest, and the end-to-end pilot command
-are not yet implemented. See docs/SESSION_HANDOFF.md. No paid call has been made.
+The single-task pilot safeguards and offline command are implemented. Configuration A
+is available; B (ledger) and C (ledger plus retrieval) are still planned. No live model
+call has been made, no new Docker evaluation has been run, and no research conclusion
+follows from the simulation.
+
+| component | state / evidence |
+|---|---|
+| Cost reservations and billing | Pre-request estimated dollar guard; per-response and cumulative acknowledged cost; cache TTL accounting; cost-capped runs disable retries |
+| Total allowance | Exclusive local `REAL_ATTEMPT.json` allows one real attempt per frozen experiment directory, including concurrent invocations and different output roots; failed/interrupted attempts are never automatically cleared |
+| Terminal handling | Truncated-response tool calls return errors without executing; context-window stop is terminal; interrupts save a partial patch/result and re-raise |
+| Run provenance | Tool/template hashes, workspace path, recorded pricing and freeze/mode populated |
+| Independent verification and recovery | `verify-run` recomputes usage/cost and checks patch/result/context consistency; `recover-run` reports an aborted prefix without editing or resuming the trace |
+| Frozen protocol | `experiments/pilot_A_pytest-11143_v2/FROZEN.json`, SHA-256 `e94b258de7d6acd05155038408c381fc0f895c993a245edd02b2186397d5b83f`; hashes source, config, task record, prompts/tools, price table, lockfile and protocol |
+| Offline simulation | `runs/pilot_A_pytest-11143_v2__sim__9ea1b161/summary.json`: 4 mock HTTP turns through the real SDK on the cached pytest repository; submitted a 234-byte inert comment-file patch; run verified, official evaluation **PENDING**, actual API spend **$0** |
+| Fixture accounting | The reported `$0.008` is computed from canned usage, not actual spend. Simulation uses no model inference and contributes no performance results |
+| Tests | **171 passed**, with `anthropic` and `eval` extras; Python socket connections blocked by default. Covers budgets/cache billing, resets, retries, truncation, interruption, recovery, artifact tampering, protocol drift and mocked evaluator wiring |
+| Static checks | Ruff lint/format clean; strict mypy clean on 28 source files |
+| Prior artifacts | All 98 files in `artifacts/manifests/runs_2026-10-20.sha256` unchanged; all 6 historical Docker reports still agree with independent raw-log checks |
+
+The first v1 freeze/simulation is preserved. Final review added the one-attempt guard;
+v1 now intentionally fails the source-drift check. v2 is the current review candidate.
+Both simulations record the uncommitted working-tree state and use source hashes;
+the source, freeze/config files and small manifests are included in the pilot milestone.
+Full execution outputs remain local and Git-ignored.
+
+The $5 proposed allowance is an application-level estimate, not a provider invoice
+ceiling. Unknown charges from interrupted requests remain possible. Settings, commands,
+and caveats: [PILOT.md](PILOT.md). No real-attempt marker has been created in either
+experiment directory. No shared caches, Docker resources, or other projects were changed.
 
 ## Repository
 
@@ -97,7 +123,7 @@ patches were empty, so no result is affected, and they are kept unchanged as art
 | Reviewer packages | `codetrace annotate package` builds blinded per-reviewer directories (instructions, guide, briefs, templates; no assistant draft, no other reviewer's work), written to git-ignored `review_packages/`. Built for `reviewer_a` and `reviewer_b`; templates validated |
 | Human annotation | **not started**: needs two human reviewers. No `annotations/adjudicated/` exists, so `codetrace analyze` refuses final metrics |
 
-## Verification run for this milestone
+## Historical verification run (2026-10-20; superseded counts above)
 
 | check | result |
 |---|---|
@@ -120,7 +146,8 @@ traces.
 | item | blocker | command |
 |---|---|---|
 | Human evidence annotation (2 reviewers, then adjudication) | needs people | send `review_packages/reviewer_a/` and `review_packages/reviewer_b/` separately; then `codetrace annotate validate --check-files` and `codetrace annotate agreement` |
-| Live pilot, configuration A | needs authorization for paid API calls | `uv run codetrace run --config configs/pilot_anthropic.yaml --allow-paid` |
+| Frozen simulation through Docker | needs authorization for local Docker execution; daemon and matching image must already exist | `PYTHONPATH=src HF_HUB_OFFLINE=1 .venv/bin/python -m codetrace.cli pilot --config experiments/pilot_A_pytest-11143_v2/experiment.yaml --simulate experiments/pilot_A_pytest-11143_v2/simulation.json --evaluate-docker` |
+| Live pilot, configuration A, one task/run | needs explicit paid authorization, price verification and a clean committed checkout | `PYTHONPATH=src .venv/bin/python -m codetrace.cli pilot --config experiments/pilot_A_pytest-11143_v2/experiment.yaml --allow-paid` |
 | CI and harness workflow on GitHub | billing not verified; Actions disabled | see RESOURCES.md |
 
 ## Limitations

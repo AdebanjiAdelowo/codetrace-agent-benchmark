@@ -1,180 +1,112 @@
-# Session Handoff: CodeTrace (2026-10-20)
+# Session handoff: CodeTrace (2026-10-22)
 
-Checkpoint written because the working session may end. Read with docs/STATUS.md
-(verified results), docs/PROTOCOL.md (methodology), and docs/RESOURCES.md. Labels:
-**[verified]** = actually executed and checked; **[implemented]** = code plus offline
-tests; **[planned]** = not done.
+Read with `STATUS.md` (artifact-backed results), `PILOT.md` (commands and cost caveats),
+and `PROTOCOL.md` (research methodology). This handoff supersedes the 2026-10-20 list
+of unfinished pilot implementation work.
 
-## A. Project overview
+## Current state
 
-- **CodeTrace**: measures whether coding agents lose task-relevant repository evidence
-  between exploration and patch generation (discovery, retention, utilization,
-  correctness), on SWE-bench Lite.
-- Repository: <https://github.com/AdebanjiAdelowo/codetrace-agent-benchmark> (private).
-  Local: `~/Documents/GitHub/codetrace-agent-benchmark`. Branch `main`. No other
-  branches, worktrees, or stashes.
-- GitHub Actions is **disabled** on the repository and has never run (billing could not be
-  verified). Keep it disabled unless the owner says otherwise.
-- Current objective: **Phase 3**, preparing a single-task paid pilot (configuration A on
-  `pytest-dev__pytest-11143`) without making any paid call until the owner authorizes it.
+- Assigned repo: `~/Documents/GitHub/codetrace-agent-benchmark`, branch `main`.
+- The pre-milestone base commit was `ba6c365`; use `git log -1` for the pilot milestone
+  commit. The saved simulations record the dirty tree as it existed when executed;
+  v2 freezes its exact source contents. Real pilots require a clean committed checkout.
+- **171 tests pass**, Ruff lint/format clean, strict mypy clean on 28 source files.
+  The project-specific `.venv` is approximately 403 MB; no dependency installation
+  was needed. Default Python test sockets are blocked; no API requests were made.
+- Phase 1 and the prior official Docker validation (3 gold + 3 comment-only controls)
+  remain verified. All 98 recorded historical artifact hashes match. Re-running the
+  independent parser on existing logs gives 6/6 agreement; no containers were run.
+- Phase 2 metrics and annotation tools exist. Two human reviewers and adjudication
+  are still needed; assistant drafts are not human ground truth.
+- Phase 3 baseline pilot preparation is implemented and simulated. B/C agents are
+  not yet implemented. No live model experiment or research finding exists.
 
-## B. Completed work
+## Implemented in this continuation
 
-| milestone | state | key files |
-|---|---|---|
-| Phase 1: pinned dataset, sanitized workspaces, sandboxed tools, agent loop, JSONL traces, official-evaluator bridge | [verified] | `src/codetrace/{dataset,workspace,tools,agent,trace,evaluation}.py` |
-| Official SWE-bench 5.0.2 Docker validation: gold resolves 3/3, comment-only controls apply and stay unresolved 3/3, no regressions | [verified] locally, Apple Silicon, Rosetta | `src/codetrace/validation.py`, `eval_bundles/harness_validation_v1/`, results in `runs/harness_validation_v1_docker/` (git-ignored) |
-| Report parser validated on real container reports; independent cross-check 6/6 | [verified] | `scripts/crosscheck_reports.py`, `tests/test_real_reports.py`, `tests/fixtures/swebench_5.0.2_docker/` (sanitized) |
-| Phase 2: evidence-unit schema v2, edit-site extraction, metrics (DR, CRR, CLR) with known-answer tests, analyze CLI | [implemented] | `src/codetrace/{evidence,metrics}.py`, `tests/test_metrics.py` |
-| Annotation package: auto edit sites, AI-assistant candidate support units (**not human labels**), blinded reviewer packages | [implemented]; human labels **not started** | `annotations/`, `src/codetrace/annotation_package.py`, `docs/REVIEWER_INSTRUCTIONS.md` |
-| Anthropic adapter tested with mock HTTP transport (never called for real) | [implemented] | `src/codetrace/models/anthropic_client.py`, `tests/test_anthropic_adapter.py` |
+1. `agent.py`: `Budget.max_cost_usd`, conservative pre-request reservation, response
+   and cumulative costs, total result cost, billing completeness; populated tool and
+   task-template hashes, workspace path, pricing and freeze metadata.
+2. Truncated (`max_tokens`) tool calls return errors and never execute. Context-window
+   stops terminate. Keyboard interruption saves the current patch and finalized run,
+   then re-raises; in-flight billing is marked incomplete.
+3. `verify.py`: independent usage/cost/patch/result/context checks and aborted-prefix
+   recovery, including a torn last line. Recovery never modifies or resumes a trace.
+4. `freeze.py`: exclusive freeze creation and drift checking over config, all Python
+   package source, task record, prompts/tools, pricing, uv lockfile and protocol;
+   evaluator, SDK and previously validated image identity recorded.
+5. `pilot.py`: single-task orchestration with explicit paid gate, clean-commit gate,
+   mock transport mode, fresh workspace/tree check, prediction export, saved evaluator
+   command, planned/executed/verified summary, opt-in official evaluation, collection
+   and independent raw-log cross-check. Docker preflight runs before model calls and
+   again before evaluation; it never starts Docker, pulls images, or cleans resources.
+6. An exclusive local `REAL_ATTEMPT.json` in the frozen experiment directory permits
+   one real attempt, even across concurrent calls or a different `--runs-dir`. It is
+   Git-ignored and never cleared automatically, including after constructor failure.
+   Review charges before authorizing another experiment. No such marker exists here.
+7. Cross-check logic moved into `src/codetrace/crosscheck.py`; the existing script is
+   a compatibility wrapper. Tests cover the real reports and mocked pipeline wiring.
 
-### Work in this checkpoint commit (Phase 3, partial) [implemented, offline only]
+## Saved execution evidence
 
-- `src/codetrace/pricing.py` (new): versioned price table for `claude-opus-5-5`, verified
-  on 2026-10-20 from <https://platform.claude.com/docs/en/about-claude/pricing>: input $4,
-  5m cache write $5, 1h cache write $8, cache read $0.20, output $20 per MTok. No
-  long-context surcharge. Functions `usage_cost`, `estimate_request_tokens` (conservative,
-  2 chars/token), `projected_call_cost` (upper bound). Tests: `tests/test_pricing.py`.
-- `src/codetrace/trace.py`: schema 0.2.0 (backward compatible). `TokenUsage` gains
-  `cache_write_5m_tokens` / `cache_write_1h_tokens`. `RunManifest` gains optional
-  `tool_specs_sha256`, `task_template_sha256`, `workspace_path`, `pricing`, `freeze`.
-  **These manifest fields are defined but not yet populated by `agent.py`.**
-  `schemas/trace.schema.json` regenerated.
-- `src/codetrace/models/anthropic_client.py`: explicit cache TTL (`ttl: "5m"`, typed as
-  the SDK literal), parses cache-write TTL breakdown, records `service_tier`,
-  `inference_geo`, `speed` in `ModelResponse.meta` (`models/base.py`).
-- `artifacts/manifests/runs_2026-10-20.sha256` (new): SHA-256 of all 98 files under
-  `runs/`, committed so artifact integrity is anchored in git.
+Current freeze: `experiments/pilot_A_pytest-11143_v2/FROZEN.json`:
+`e94b258de7d6acd05155038408c381fc0f895c993a245edd02b2186397d5b83f`.
 
-## C. Current state
+Current simulation: `runs/pilot_A_pytest-11143_v2__sim__9ea1b161/`:
 
-**Works [verified]:** 132 tests pass, ruff clean, mypy `--strict` clean (23 files, src and
-scripts), all 6 stored traces validate, leakage audits pass, Docker-validation manifest
-verifies, Docker Hub tag digests for the 3 pilot images still equal the validated image IDs.
+- Four mock HTTP responses through the real Anthropic SDK, using the cached pytest task.
+- Reads code and creates `_codetrace_simulation.py` containing an inert comment;
+  submits a 234-byte patch. This is canned behavior, not a model-generated issue fix.
+- Valid trace and independent `verify-run` pass; summary says `offline_simulation`,
+  `evaluation_status: PENDING`, `research_results: false`.
+- Reported $0.008 is fixture arithmetic; actual API spend is $0.
+- No official evaluator execution occurred during this continuation.
 
-**Not implemented yet (Phase 3 remainder):**
+The v1 freeze and simulation (`runs/pilot_A_pytest-11143_v1__sim__e8869dca/`) are
+preserved. v1 intentionally fails source drift after the one-attempt guard was added.
+Do not overwrite its freeze. Use v2, or create v3 if source/protocol/config must change.
 
-1. Cost-cap enforcement in `agent.py`: `Budget.max_cost_usd`; before each request, stop
-   with exit status `cost_budget` if `spent + projected_call_cost(...) > cap`. Record
-   `cost_usd` and cumulative cost per `model_response` event, and in `RunResult`.
-2. `stop_reason` handling in `agent.py`: `max_tokens` with tool_use means do not execute;
-   return `is_error` tool_results ("not executed: truncated"). `model_context_window_exceeded`
-   means end the run with that exit status.
-3. `KeyboardInterrupt`: finalize patch and `run_end` (status `interrupted`), then re-raise.
-4. Populate the new manifest fields (workspace path, tool/template hashes, pricing).
-5. `codetrace recover-run`: for traces without `run_end`, sum usage and cost from
-   `model_response` events and write `recovery.json` (never modify the trace; never resume
-   an aborted run; re-run from scratch with a new run id).
-6. `codetrace verify-run`: independent consistency checks (usage sums equal run_end, cost
-   recomputed from usage, patch hash equals file, result.json equals run_end, snapshot spans
-   equal spans viewed in segment, compaction removed spans equal previous segment's views).
-7. Frozen experiment: `experiments/pilot_A_pytest-11143_v1/experiment.yaml` plus
-   `codetrace freeze` writing `FROZEN.json` (hashes of system prompt, task template, tool
-   specs, price table, agent-side source files, config; dataset revision; swebench 5.0.2;
-   image digest `sha256:e08ce142adec5ec985e867e910045734ec3c58fe174fc054c5f83855bed78fd4`).
-   The pilot command must refuse if hashes drift.
-8. `codetrace pilot` end-to-end command: freeze check, then a clean-commit check, then the
-   agent run (paid only with `--allow-paid`; `--simulate <canned.json>` uses a mock
-   transport), then prediction export, Docker preflight (daemon, 15 GiB floor, image digest),
-   the official evaluator in `evaluation/`, `collect_evaluation`, crosscheck, verify-run,
-   and `summary.json` with separate planned / executed / verified statuses and
-   `mode: offline_simulation | real`.
-9. Mock-API tests for: context reset (fresh conversation, no orphan tool_use), cache-token
-   cost accounting, 429 and connection retries, retries exhausted, cost-cap stop,
-   max_tokens truncation, interrupt recovery, and a socket-blocking fixture proving no
-   network access.
+## Verification commands
 
-**Blockers / constraints:**
-
-- **Docker Desktop is not running** (daemon socket absent at checkpoint time; it was
-  stopped outside this project). Another project (`course-learning-portal`, Supabase) uses
-  Docker. Do not start, stop, or prune Docker without the owner's agreement.
-- No paid API call has been authorized. No `ANTHROPIC_API_KEY` is set in this environment.
-- Human evidence annotation needs two reviewers (packages built locally in git-ignored
-  `review_packages/`).
-- Dataset license unverified (no license tag on the dataset card).
-- macOS quirks: Python downloads need `CODETRACE_FORCE_IPV4=1` and `HF_HUB_DISABLE_XET=1`.
-  The venv's `.pth` file gets the hidden flag; tests use `pythonpath = ["src"]`, and ad-hoc
-  commands use `PYTHONPATH=src uv run --no-sync python -m codetrace.cli ...`.
-- The session scratchpad is temporary: an earlier artifact fingerprint stored there was lost.
-  Keep fingerprints in `artifacts/manifests/` (committed).
-
-**No processes are running.** No experiment is interrupted.
-
-## D. Decisions and reasoning
-
-- Own minimal harness (no shell tool) so every context token is attributable. Test outcomes
-  come only from the official evaluator.
-- Context compaction is a logged **reset** to a fresh conversation (append-only history;
-  current Claude models reject edited history with thinking blocks).
-- Patch-generation moment is the model request whose response contained the first successful
-  edit. Same-turn tool results do not count as seen (PROTOCOL.md §3, revised before any
-  model run).
-- No server-side refusal fallbacks (would switch models mid-run). Effort fixed at `high`.
-- Dataset `SWE-bench/SWE-bench_Lite@b0dde10…` (the princeton-nlp copy lacks fields
-  swebench 5.0.2 needs). Evaluator gets a pinned local export.
-- Harness advisory labels (`ambiguous_failure_ids`) never override grades (false positive
-  observed on pytest's own suite).
-- Only `annotator_kind: human` annotations may be `annotated` or `adjudicated` (schema-enforced).
-  `codetrace analyze` refuses non-adjudicated sets unless `--allow-provisional`.
-- Paid runs require `--allow-paid` and a clean committed tree.
-- Rejected: princeton-nlp dataset copy, in-place history pruning, an external agent framework,
-  and running model commands on the host.
-
-## E. Reproducibility
+From the repository root, with no install or network:
 
 ```bash
-cd ~/Documents/GitHub/codetrace-agent-benchmark
-uv sync --locked --group dev --extra anthropic --extra eval   # Python 3.12, anthropic 1.15.0, swebench 5.0.2
-chflags nohidden .venv/lib/python3.12/site-packages/*.pth     # macOS quirk, if imports fail
-uv run --no-sync pytest -q && uv run --no-sync ruff check . && uv run --no-sync mypy
-PYTHONPATH=src uv run --no-sync python -m codetrace.cli validate-trace runs/*/runs/*/trace.jsonl
-PYTHONPATH=src uv run --no-sync python scripts/audit_runs.py runs/smoke_heuristic_v2
-PYTHONPATH=src uv run --no-sync python scripts/crosscheck_reports.py runs/harness_validation_v1_docker
-shasum -a 256 -c artifacts/manifests/runs_2026-10-20.sha256    # artifact integrity
+.venv/bin/python -m pytest -q
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .
+.venv/bin/mypy
+HF_HUB_OFFLINE=1 PYTHONPATH=src .venv/bin/python -m codetrace.cli freeze --check \
+  --config experiments/pilot_A_pytest-11143_v2/experiment.yaml
+HF_HUB_OFFLINE=1 PYTHONPATH=src .venv/bin/python scripts/audit_runs.py \
+  runs/pilot_A_pytest-11143_v2__sim__9ea1b161
+PYTHONPATH=src .venv/bin/python -m codetrace.cli verify-run --run-dir \
+  runs/pilot_A_pytest-11143_v2__sim__9ea1b161/runs/pytest-dev__pytest-11143__A_baseline__s0__e7277422
+PYTHONPATH=src .venv/bin/python scripts/crosscheck_reports.py runs/harness_validation_v1_docker
+shasum -a 256 -c artifacts/manifests/runs_2026-10-20.sha256
 ```
 
-Docker validation (needs Docker running and about 5 GiB free per task; one task at a time):
+## Next steps and constraints
 
-```bash
-docker pull --platform linux/amd64 swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-11143:latest
-PYTHONPATH=src uv run --no-sync python -m codetrace.cli validate-harness \
-  --bundle eval_bundles/harness_validation_v1 --out runs/<new_dir> \
-  --instance-ids pytest-dev__pytest-11143 --runs gold control
-```
+1. Review the local code and proposed v2 settings. Preserve v1/v2 freezes and outputs.
+   Source changes require a new versioned freeze. No methodology change is needed to
+   review or test the current implementation.
+2. With owner authorization for Docker execution, use the simulated pilot command in
+   `PILOT.md` with `--evaluate-docker`. It needs a running daemon, 15 GiB free disk,
+   swebench 5.0.2, and the already present exact amd64 image. No pulls are automatic.
+3. Before any real run: verify current pricing, commit the reviewed code/config/freeze,
+   confirm the proposed $5 allowance, and obtain explicit paid authorization. Only
+   then use `pilot --allow-paid`. The estimate is not an invoice guarantee; unknown
+   charges are possible after interrupted requests. Automatic retries are disabled.
+4. Arrange two human annotations and adjudication. Do not send messages to reviewers
+   or publish anything without the owner's instructions.
+5. After a verified live baseline pilot, agree on B/C ledger/retrieval behavior before
+   scaling. The report, visualizations and BMW proposal remain future deliverables.
 
-Seeds: agent seeds are config-level (`seeds: [0]`). The scripted models are deterministic.
-The live model is not seedable (record it as such).
+Actions remains disabled as previously recorded; do not enable it without permission.
+Dataset licensing remains unverified (no card license tag). No current Docker daemon
+state is asserted: Docker was not started, stopped, queried, pulled, or pruned here.
+At the 2026-10-22 resource check, 47 GiB disk was free and memory_pressure reported 36%
+free. Do not touch shared caches or other repositories.
 
-**Artifacts not in GitHub** (local only, git-ignored): `runs/` (smoke traces, Docker
-validation logs and reports; fingerprints committed in `artifacts/manifests/`),
-`.codetrace_data/` (repo mirrors and workspaces, recreatable), `review_packages/`
-(recreatable with `codetrace annotate package`), `.venv/`. No external backup exists.
-
-## F. Next steps (prioritized)
-
-1. **Finish Phase 3 offline items 1 to 9 in section C**, in `src/codetrace/agent.py`,
-   `src/codetrace/cli.py`, a new `src/codetrace/verify.py`, and
-   `experiments/pilot_A_pytest-11143_v1/`. Acceptance: all new behaviors covered by
-   mock-transport tests; full suite, ruff, and strict mypy clean; the `pilot --simulate` run
-   produces a valid trace, passes `verify-run`, and writes `summary.json` with
-   `mode: offline_simulation`.
-2. Proposed frozen pilot values (to confirm with the owner): model `claude-opus-5-5`,
-   effort `high`, `max_tokens` 16000, max steps 40, token budget 1.5M processed tokens,
-   context reset at 120k, wall time 1800 s, **cost cap $5 per run and $5 total**. Expected
-   cost about $1 to $3 (assumption, not measured).
-3. When Docker is running again (owner's call), run the simulated pilot through the Docker
-   step to exercise the full pipeline.
-4. **Only with explicit owner authorization:** run the real paid pilot (one run).
-5. Send review packages to two human reviewers; adjudicate; then compute metrics.
-6. Update docs/STATUS.md with every executed or verified step.
-
-## G. Resume instructions for a new session
-
-1. Read this file, then docs/STATUS.md and docs/PROTOCOL.md.
-2. Verify the state: `git fetch && git status && git log --oneline -3`. Local HEAD should
-   equal `origin/main` and the tree should be clean.
-3. Run the commands in section E. All must pass before changing code.
-4. Continue with section F, step 1. Do not call the Anthropic API, enable GitHub Actions,
-   provision infrastructure, or run Docker cleanup without explicit authorization.
+Large execution artifacts under `runs/`, repository mirrors/workspaces under
+`.codetrace_data/`, reviewer packages and `.venv/` remain local and Git-ignored.
+The freeze/config and SHA-256 manifests are small, reviewable source artifacts.

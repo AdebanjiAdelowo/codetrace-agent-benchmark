@@ -1,0 +1,21 @@
+# Proposed live pilot settings; no paid execution is authorized by this file.
+# Exactly one task/configuration/run: the $5 per-run budget is also the total budget.
+experiment_id: pilot_A_pytest-11143_v1
+description: Single-task baseline pilot; validate with offline simulation before paid authorization.
+split: test
+instance_ids: [pytest-dev__pytest-11143]
+agent_configs: [A_baseline]
+seeds: [0]
+model:
+  provider: anthropic
+  name: claude-opus-5-5
+  effort: high
+  max_tokens: 16000
+budget:
+  max_steps: 40
+  max_total_tokens: 1500000
+  max_wall_s: 1800
+  context_token_limit: 120000
+  max_cost_usd: 5.0
+eval_image: swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-11143:latest
+eval_image_id: sha256:e08ce142adec5ec985e867e910045734ec3c58fe174fc054c5f83855bed78fd4

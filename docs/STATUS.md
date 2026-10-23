@@ -27,7 +27,9 @@ dataset/trace redistribution and external-model input rights are not inferred fr
 those component licenses. See [LICENSING.md](LICENSING.md) and
 [FINAL_OFFLINE_INTEGRATION.md](FINAL_OFFLINE_INTEGRATION.md) for evidence, resource
 observations and the exact blockers. Environment API key is absent; other credentials
-and actual account access were not tested. No paid attempt marker was created.
+and actual account access were not tested. No paid attempt marker was created. Final post-start inventory comparison preserves
+all 18 container IDs, 18 volume names, 12 image IDs and 9 network IDs. New evidence is
+fingerprinted in `artifacts/manifests/final_offline_preflight_2026-10-23.sha256`.
 
 ## Readiness review (2026-10-22, after commit fc678c2)
 

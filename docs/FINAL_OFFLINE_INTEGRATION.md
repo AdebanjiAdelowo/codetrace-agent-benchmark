@@ -46,7 +46,9 @@ headroom, and confirmation that it resolves to the frozen amd64 ID. Keep at leas
 
 The daemon was unavailable for a pre-start resource inventory. After startup, the
 read-only baseline contained 18 container IDs, 18 volume names, 12 image IDs and 9
-network IDs. A later inventory is compared in the local preservation report. This
+network IDs. The final inventory has the same 18 containers, 18 volumes, 12 images
+and 9 networks: every recorded object identity is unchanged. Results are saved in
+`docker_preservation.json`. This
 checks object identities, not volume-content integrity: running services naturally
 write data, and volume contents were not read or snapshotted. No stop/remove/prune
 command was issued against another project's resources.
@@ -136,7 +138,8 @@ audit artifacts** match their committed hashes. New outputs are separate and Git
 A known-credential-pattern scan is repeated before commit; it is not a completeness proof.
 
 Host disk was about 32 GiB free before Docker startup, about 29 GiB shortly afterwards;
-Docker VM configured memory is 7.75 GiB. Initial memory_pressure reported 38% free.
+The final disk check was about 36.7 GiB free. Changes on this shared host cannot be
+attributed solely to this task. Docker VM configured memory is 7.75 GiB. Initial memory_pressure reported 38% free.
 These are observations on a shared host, not an attribution of all disk/memory changes
 to this task or measured peak consumption. No GPU or image download was used. Mocked
 agent-loop wall time was 0.322 seconds, excluding setup and audits. Actual API charges
@@ -163,3 +166,6 @@ approval; complete a fresh official Docker-integrated simulation and raw-log cro
 resolve account access and the licensing scope for external-model input/release. Only
 then consider a separate paid-execution authorization. No real model, new official
 grade, evidence-utilization effect or automotive-scale generalization is established.
+
+The final audit manifest is `artifacts/manifests/final_offline_preflight_2026-10-23.sha256`;
+it fingerprints the new local evidence without publishing the evidence bodies.

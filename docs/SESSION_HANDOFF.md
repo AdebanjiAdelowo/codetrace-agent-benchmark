@@ -1,8 +1,28 @@
-# Session handoff: CodeTrace (2026-10-22)
+# Session handoff: CodeTrace (2026-10-23)
 
 Read with `STATUS.md` (artifact-backed results), `PILOT.md` (commands and cost caveats),
 and `PROTOCOL.md` (research methodology). This handoff supersedes the 2026-10-20 list
 of unfinished pilot implementation work.
+
+## Latest integration preflight
+
+Starting commit `d3a920f` was clean and matched remote main. Owner authorized Docker
+Desktop startup; it succeeded. **The required frozen pytest image is missing**, so
+no Docker integration/evaluation or paid request was run. No image pull or shared
+resource cleanup occurred. Docker was left running for existing services. See
+`FINAL_OFFLINE_INTEGRATION.md` for the exact missing tag/ID and pending command.
+
+Fresh offline simulation: `runs/pilot_A_pytest-11143_v2__sim__8e2dbbad/`, clean d3a920f
+provenance, four mock turns, verifier/leakage/schema/predictions pass. 178 tests pass;
+Ruff and strict mypy pass. All prior 98 + 29 + 18 artifact hashes match. Source, lockfile
+and v2 freeze are unchanged. Logs: `runs/final_offline_preflight_2026-10-23_d3a920f/`.
+
+Pinned card licensing remains undeclared; exact pytest and harness MIT notices were
+verified. `LICENSING.md` distinguishes source, metadata, patches, traces and annotations.
+Do not treat component MIT findings as clearance for every dataset field or public trace.
+No environment API key is present; other credential/account access was not tested.
+Do not pull the approximately 1 GB image without the explicit large-download approval
+required by the owner. Do not call the real API. Earlier dated sections remain historical.
 
 ## Current state
 

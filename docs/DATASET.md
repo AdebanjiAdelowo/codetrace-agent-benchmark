@@ -39,6 +39,15 @@ Policy: this repository commits no dataset records, repository code, or traces. 
 these are written under the git-ignored `runs/` and `.codetrace_data/` directories. Reports
 quote only small excerpts, as research use requires.
 
+### Pinned pytest review (2026-10-23)
+
+The pinned dataset card was fetched directly: no `license` key and no licensing text
+were present. The SWE-bench GitHub license endpoint reports MIT; pytest's `LICENSE`
+at `6995257cf470d2143ad1683824962de4071c0eb7` is also MIT. Other task repositories
+remain unverified here. Harness/source licensing does not automatically cover all
+benchmark issue prose, compiled metadata, or generated traces. Follow the component
+matrix and redistribution boundaries in [LICENSING.md](LICENSING.md).
+
 ## Information hiding
 
 - The agent receives `AgentTaskView(instance_id, repo, base_commit, problem_statement)`.

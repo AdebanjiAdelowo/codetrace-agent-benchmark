@@ -1,9 +1,33 @@
 # Status: Planned, Executed, Verified
 
-Last updated: 2026-10-22. "Verified" means checked against an artifact or an independent
+Last updated: 2026-10-23. "Verified" means checked against an artifact or an independent
 tool, as given in the evidence column. **No language model has been called. No GitHub
 Actions workflow has run.** Official SWE-bench Docker evaluation has been run locally
 for harness validation only (reference and negative-control patches, not agent output).
+
+## Final integration preflight (2026-10-23): BLOCKED on missing image
+
+Docker Desktop was started with explicit owner authorization. The daemon responds
+(Docker 29.8.2, aarch64, 11 CPUs, 7.75 GiB VM memory), but
+`swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-11143:latest` is absent. The expected
+ID remains `sha256:e08ce142adec5ec985e867e910045734ec3c58fe174fc054c5f83855bed78fd4`.
+No replacement was pulled, no Docker simulation or new official grade was run, and no
+shared resource was removed. Docker is left running for the existing project services.
+
+A fresh non-Docker simulation from clean `d3a920f` is at
+`runs/pilot_A_pytest-11143_v2__sim__8e2dbbad/`. Trace, prediction, patch, usage/cost,
+manifest fingerprints, schema, independent verifier and leakage checks pass. The
+four-turn fixture produced a 234-byte comment patch; actual API spend is zero.
+Full suite: **178 passed (43.39 s)**; Ruff and strict mypy pass. Runtime and v2 freeze
+are unchanged. All 98 + 29 + 18 previously fingerprinted artifacts remain intact.
+
+The pinned dataset card was retrieved and has no license declaration. The pytest
+license at the exact base commit and the SWE-bench harness license are MIT; full
+dataset/trace redistribution and external-model input rights are not inferred from
+those component licenses. See [LICENSING.md](LICENSING.md) and
+[FINAL_OFFLINE_INTEGRATION.md](FINAL_OFFLINE_INTEGRATION.md) for evidence, resource
+observations and the exact blockers. Environment API key is absent; other credentials
+and actual account access were not tested. No paid attempt marker was created.
 
 ## Readiness review (2026-10-22, after commit fc678c2)
 

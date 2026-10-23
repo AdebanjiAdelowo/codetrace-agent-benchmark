@@ -1,7 +1,8 @@
 # First Anthropic live pilot: readiness decision
 
 Review date: 2026-10-22 (Europe/Rome). **Offline milestone verified; live execution is
-not authorized and is currently blocked by an unavailable Docker daemon.** No real API
+not authorized. The initial review was blocked by an unavailable Docker daemon; see
+the 2026-10-23 update below for the current missing-image blocker.** No real API
 call, live agent run, Docker evaluation, Actions run, or paid infrastructure provisioning
 was performed in this review. The report and tests extend milestone commit `fc678c2`.
 The exact commit carrying this report is available through `git log`.
@@ -10,6 +11,18 @@ The proposed decision is to accept the offline milestone and defer paid executio
 the owner authorizes the stated allowance, the shared Docker daemon is available with the
 matching image, and the outstanding licensing and account-access questions are addressed.
 The $5 figure below is an application-level estimate, not a guaranteed provider bill limit.
+
+## Updated decision, 2026-10-23
+
+**BLOCKED.** Docker Desktop now starts and the daemon responds, but the required
+pytest evaluator image is missing. The image phase stopped without a pull, substitution,
+Docker evaluation or paid API request. v2 and its fingerprints are unchanged. A fresh
+non-Docker simulation passed, as did all 178 tests and the artifact/leakage audits.
+The $5 proposal is still only an application estimate, and account access is unverified.
+Dataset licensing now has component-specific findings rather than blanket clearance.
+The 2026-10-22 observations below are historical; current evidence and blockers are in
+[FINAL_OFFLINE_INTEGRATION.md](FINAL_OFFLINE_INTEGRATION.md) and
+[LICENSING.md](LICENSING.md). Separate approval is required before a >500 MB image pull.
 
 ## Experiment and environment
 
